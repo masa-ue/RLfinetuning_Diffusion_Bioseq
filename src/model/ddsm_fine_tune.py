@@ -222,12 +222,12 @@ def fine_tuning(score_model, reward_model, eval_model, original_model, learning_
         loss = -torch.mean(reward - entropy_coff * entropy)/accmu
 
         loss.backward()
-        # Update 
+        # Update (Gradient accumulation)
         if  (k+1) % accmu ==0:
             print(k)
             optim.step()
             optim.zero_grad()
-            #print([np.mean(ev_list[-accmu:]) for ev_list in eval_list ]  )
+
             torch.save(score_model.state_dict(), save_name +"_%d.pth"%k)
 
             # Evaluation 
