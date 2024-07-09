@@ -1,0 +1,13 @@
+__pycache__
+save_models/
+tutorials/wandb/
+*/lightning_logs/
+*/artifacts/
+*/log_MPRA/
+*/wandb/
+scripts/wandb/
+data/*
+Old_files/
+scripts/wandb/
+offline_prj
+conditioning_prj/
