@@ -1,32 +1,39 @@
+# RL-Based Fine-Tuning for Bilological Sequences 
 
 
-# Diffusion for Bilological Sequences 
+## What is this code about?  
 
-## What is this code about? 
+This is a tutorial on the review (turoail paper) for RL-based-fine-tuniing.  Especially, we focus on the design of biological sequences like DNA (enhancer), RNA (UTR) design. 
 
-See tutorials. Each notebook is self-contained. 
+![Summary](./media/summary.png)
 
-* Enhancer_data_collection.ipynb : Get raw data (x, y) and how we make labels from y
-* Enhancer_diffusion_training.ipynb: Train conditional generative models (Score-based Diffusion over Simplex)
-* Enhancer_evaluation.ipynb: Evaluate the perfomance of conditional generative models
-* Enhancer_oracle_training.ipynb: Train oralcle models
+# Tutorials
 
-We can make generate gudided sequences. The following is a DNA sequnece (enhancer) conditioning with high property.  
+See tutorial folder. Each notebook is self-contained. 
 
-![Generated sequecnes](./media/DNA_high_output.png)
+* [1-UTR_data.ipynb](tutorials/UTR/1-UTR_data.ipynb) : Get raw data (x, y) and how we make labels from y
+* [2-UTR_diffusion_training.ipynb](tutorials/UTR/2-UTR_diffusion_training.ipynb): Train conditional and unconditional diffuison models (score-based Diffusion over Simplex in )
+* [3-UTR_evaluation](tutorials/UTR/3-UTR_evaluation.ipynb): Evaluate the perfomance of conditional generative models
+* [4-UTR_finetune_directbackprop](tutorials/UTR/4-UTR_finetune_directbackprop.ipynb): Main fine-tuning code with direct reward backpropagation 
+* [5-UTR_finetune_PPO.ipynb](tutorials//UTR/5-UTR_finetune_PPO.ipynb):  Main fine-tuning code with PPO  
+* [Oracle_training](tutorials/UTR/UTR_oracle_training.ipynb): Make rewards models from the dataset (sequence, activity)
 
-The following is an UTR sequence conditioning with high property. 
+We can make generate gudided sequences. The following is a DNA sequnece (enhancer) before/after fine-tuning. We optmize an acitivity level. 
 
-![Generated sequecne2](./media/RNA_output_high.png)
+![Generated sequecnes](./media/DNA_high_output.png) 
+The following is a UTR sequence before/after fine-tuning. We optimize a MRL (acitivty). 
+
+<img src= "./media/RNA_output_high_finetune.png"  width="400"> <img src= "./media/chat_UTR.png" width="600"> 
 
 
-Severel remarks 
+
+### Severel remarks 
 * Enahcer dataset: Refer to https://www.biorxiv.org/content/10.1101/2023.08.08.552077v1 
 * UTR dataset: Refer to https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE114002
-* Current backbone diffusino models are https://arxiv.org/abs/2305.10699
+* Current backbone diffusion models for fine-tuning are Dirichlet Diffusion Models in  https://arxiv.org/abs/2305.10699 (We acknolwedge that we borrow the code from their code in some part)
 
 
-## Enviroments needed 
+### Rquired enviroments 
 
 If we have GRELU package (https://github.com/Genentech/gReLU), that would work. 
 ```

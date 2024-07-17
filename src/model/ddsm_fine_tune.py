@@ -3,10 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 from torch.nn.functional import one_hot
-from . import ddsm
 import numpy as np
 import tqdm
-
+import wandb
+from . import ddsm  
 
 
 def Euler_Maruyama_sampler_GPU(
@@ -201,6 +201,9 @@ def fine_tuning(score_model, reward_model, eval_model, original_model, learning_
     reward_list = [ ]
     num_eval = len(eval_model)
     eval_list =[ [] for i in range(num_eval)]
+    wandb.login(host = "https://api.wandb.ai") 
+    run = wandb.init(entity ='fderc_diffusion', project="Example-DNA")
+
     for k in range(num_epoch): 
         torch.set_grad_enabled(True)
         optim = torch.optim.Adam(score_model.parameters(), lr=learning_rate)
@@ -224,7 +227,6 @@ def fine_tuning(score_model, reward_model, eval_model, original_model, learning_
         loss.backward()
         # Update (Gradient accumulation)
         if  (k+1) % accmu ==0:
-            print(k)
             optim.step()
             optim.zero_grad()
 
@@ -247,14 +249,12 @@ def fine_tuning(score_model, reward_model, eval_model, original_model, learning_
             
             reward = torch.mean(reward_model(logits_pred)) #### Evaluate_reward 
             reward_list.append([k,reward.item()])
-            print(reward.item() )
-
+            run.log({"step": k, "reward": reward.item()} ) 
             with torch.no_grad():
                 for i, func in enumerate(eval_model): 
                     reward = torch.mean(func(logits_pred))
                     eval_list[i].append(reward.item()) 
-            
-                print([np.mean(ev_list[-1]) for ev_list in eval_list ])
+    wandb.finish()
     return reward_list, eval_list
 
 

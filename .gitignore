@@ -12,3 +12,8 @@ scripts/wandb/
 offline_prj
 conditioning_prj/
 *temporary*
+*.pth
+*.json
+save1.png
+save2.png
+save3.png

@@ -1,6 +1,6 @@
 import torch
-from. import ddsm as ddsm
-from. import ddsm_model as modeld
+import model.ddsm as ddsm 
+import model.ddsm_model as modeld
 import numpy as np
 import wandb
 import lightning as L

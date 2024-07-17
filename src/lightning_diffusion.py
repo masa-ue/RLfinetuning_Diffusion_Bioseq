@@ -24,7 +24,6 @@ def list_of_ints(arg):
     return list(map(int, arg.split(',')))
  
 
-parser.add_argument("--save_folder", type=str, help="Folder to be saved")
 parser.add_argument("--train_data", type = str)
 parser.add_argument("--wandb_projectname", type = str)
 parser.add_argument("--class_number", type = int)
@@ -35,7 +34,6 @@ parser.add_argument("--seed_file_name", type =str )
 parser.add_argument("--time_schedule", type= str)
 
 args = parser.parse_args()
-save_folder = args.save_folder
 cuda_target = args.device
 all_class_number = args.class_number 
 wandb_true = args.wandb
@@ -92,7 +90,7 @@ if __name__ == '__main__':
     data_loader = torch.utils.data.DataLoader(training_set, batch_size = config.batch_size , shuffle=True, num_workers= 4)
 
 
-    wandb.init(entity ='grelu', project= wandb_projectname, name = "diffusion") # Change depending on your proejcts
+    wandb.init(project= wandb_projectname, name = "diffusion") # Change depending on your proejcts
         
     ################### Start Training ##############
 
