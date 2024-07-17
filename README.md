@@ -21,9 +21,11 @@ See tutorial folder. Each notebook is self-contained.
 We can make generate gudided sequences. The following is a DNA sequnece (enhancer) before/after fine-tuning. We optmize an acitivity level. 
 
 ![Generated sequecnes](./media/DNA_high_output.png) 
+
+
 The following is a UTR sequence before/after fine-tuning. We optimize a MRL (acitivty). 
 
-<img src= "./media/RNA_output_high_finetune.png"  width="400"> <img src= "./media/chat_UTR.png" width="600"> 
+<img src= "./media/RNA_output_high_finetune.png"  width="200"> <img src= "./media/chat_UTR.png" width="300"> 
 
 
 
@@ -31,6 +33,7 @@ The following is a UTR sequence before/after fine-tuning. We optimize a MRL (aci
 * Enahcer dataset: Refer to https://www.biorxiv.org/content/10.1101/2023.08.08.552077v1 
 * UTR dataset: Refer to https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE114002
 * Current backbone diffusion models for fine-tuning are Dirichlet Diffusion Models in  https://arxiv.org/abs/2305.10699 (We acknolwedge that we borrow the code from their code in some part)
+* Reward models are based on the Enformer, which is one of the most common models for DNA sequecen modeling. 
 
 
 ### Rquired enviroments 
