@@ -44,7 +44,7 @@ If we have GRELU package (https://github.com/Genentech/gReLU), that would work.
 Additioanlly, we need standard packages. 
 ```
 conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
-pip install tqdm pandas matplotlib lightning
+pip install grelu tqdm pandas matplotlib lightning
 ```
 
 
