@@ -31,8 +31,9 @@ The following is a UTR sequence before/after fine-tuning. We optimize an MRL (ac
 
 * Current backbone diffusion models for fine-tuning are Dirichlet Diffusion Models in  [Avedeyev et.al, 2023](https://arxiv.org/abs/2305.10699) (We acknowledge that we borrow the code from their code in some parts. We will add more diffusion models tailoed to sequences. )
 
-* Is overoptimization happening?: Check it out [Uehera and Zhao et.al, 2024](https://arxiv.org/abs/2405.19673) to avodi it.
+* Is overoptimization happening?: Check it out [Uehera and Zhao et.al, 2024](https://arxiv.org/abs/2405.19673) on how to avodi it.
 
+* Lab in the loop? : Chekc it out Yulai's implementation here https://github.com/zhaoyl18/SEIKO and our paper[Uehara and Zhao et.al, 2024](https://arxiv.org/abs/2402.16359)
 
 ### Acknowledgement
 * Reward models are based on the enfomrer-model [(Avset et al., 2021)](https://www.nature.com/articles/s41592-021-01252-x), one of the most common models for DNA sequence modeling. We use Grelu package for this purpose. 
