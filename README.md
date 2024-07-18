@@ -43,8 +43,8 @@ The following is a UTR sequence before/after fine-tuning. We optimize an MRL (ac
 
 If we have GRELU package (https://github.com/Genentech/gReLU) (+ standard packages) work. 
 ```
-pip install gReLU
-pip install tqdm pandas matplotlib lightning
+conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
+pip install grelu tqdm pandas matplotlib lightning
 ```
 
 ### Citation
