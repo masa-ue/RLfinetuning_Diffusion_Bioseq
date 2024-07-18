@@ -312,7 +312,7 @@ def fine_tuning(score_model, reward_model, eval_model, original_model, learning_
     num_eval = len(eval_model)
     eval_list =[ [] for i in range(num_eval)]
     wandb.login(host = "https://api.wandb.ai") 
-    run = wandb.init(entity ='fderc_diffusion', project="Example-DNA")
+    run = wandb.init()
 
     optim = torch.optim.Adam(score_model.parameters(), lr=learning_rate)
 
