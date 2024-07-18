@@ -370,7 +370,7 @@ def fine_tuning(score_model, reward_model, eval_model, original_model, learning_
         loss =0.0
         for random_t in range(num_steps): 
             ratio = ratio_list[random_t]
-            loss = loss  - torch.mean(torch.min(reward * ratio, reward * torch.clamp(ratio , min = 1.0 - 0.1, max = 1.0 + 0.1) )) * 1.0/(num_steps * accmu)
+            loss = loss  - torch.mean(torch.min(reward * ratio, reward * torch.clamp(ratio , min = 1.0 - 0.2, max = 1.0 + 0.2) )) * 1.0/(num_steps * accmu)
 
         # Update parameters 
         loss.backward()
