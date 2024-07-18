@@ -1,7 +1,7 @@
 # RL-Based Fine-Tuning for Bilological Sequences 
 
 
-This is a code for the tutorial/review paper for RL-based-fine-tuniing.  In this code, we especially focus on the design of biological sequences like DNA (enhancers) and RNA (UTRs) design. 
+This is a code for the tutorial/review paper for RL-based-fine-tuniing in order to optimize down-stream reward function.  In this code, we especially focus on the design of biological sequences like DNA (enhancers) and RNA (UTRs) design by fine-tuning diffusoin models with RL.
 
 ![Summary](./media/summary.png)
 
@@ -11,8 +11,8 @@ See notebooks in the tutorial folders. Each notebook is self-contained. There is
 
 * [1-UTR_data.ipynb](tutorials/UTR/1-UTR_data.ipynb) : Get raw data (x, y) and how we make labels from y
 * [2-UTR_diffusion_training.ipynb](tutorials/UTR/2-UTR_diffusion_training.ipynb): Train conditional and unconditional diffuison models (score-based Diffusion over Simplex in )
-* [3-UTR_evaluation](tutorials/UTR/3-UTR_evaluation.ipynb): Evaluate the perfomance of conditional generative models
-* [4-UTR_finetune_directbackprop](tutorials/UTR/4-UTR_finetune_directbackprop.ipynb): Main fine-tuning code with direct reward backpropagation 
+* [3-UTR_evaluation.ipynb](tutorials/UTR/3-UTR_evaluation.ipynb): Evaluate the perfomance of conditional generative models
+* [4-UTR_finetune_directbackprop.ipynb](tutorials/UTR/4-UTR_finetune_directbackprop.ipynb): Main fine-tuning code with direct reward backpropagation 
 * [5-UTR_finetune_PPO.ipynb](tutorials//UTR/5-UTR_finetune_PPO.ipynb):  Main fine-tuning code with PPO  
 * [Oracle_training](tutorials/UTR/UTR_oracle_training.ipynb): Make rewards models from the dataset (sequence, activity)
 
@@ -33,7 +33,7 @@ The following is a UTR sequence before/after fine-tuning. We optimize an MRL (ac
 
 * Is overoptimization happening?: Check it out [Uehera and Zhao et.al, 2024](https://arxiv.org/abs/2405.19673) on how to avodi it.
 
-* Lab in the loop? : Chekc it out Yulai's implementation here https://github.com/zhaoyl18/SEIKO and our paper[Uehara and Zhao et.al, 2024](https://arxiv.org/abs/2402.16359)
+* Lab in the loop? : Check it out Yulai's implementation here https://github.com/zhaoyl18/SEIKO and our paper[Uehara and Zhao et.al, 2024](https://arxiv.org/abs/2402.16359)
 
 ### Acknowledgement
 * Reward models are based on the enfomrer-model [(Avset et al., 2021)](https://www.nature.com/articles/s41592-021-01252-x), one of the most common models for DNA sequence modeling. We use Grelu package for this purpose. 
