@@ -90,7 +90,7 @@ if __name__ == '__main__':
     data_loader = torch.utils.data.DataLoader(training_set, batch_size = config.batch_size , shuffle=True, num_workers= 4)
 
 
-    wandb.init(project= wandb_projectname, name = "diffusion") # Change depending on your proejcts
+    wandb.init(project= wandb_projectname, name = "diffusion") 
         
     ################### Start Training ##############
 

@@ -201,7 +201,7 @@ def fine_tuning(score_model, reward_model, eval_model, original_model, learning_
     reward_list = [ ]
     num_eval = len(eval_model)
     eval_list =[ [] for i in range(num_eval)]
-    wandb.login(host = "https://api.wandb.ai") 
+    wandb.login(host="https://api.wandb.ai") 
     run = wandb.init()
 
     for k in range(num_epoch): 

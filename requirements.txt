@@ -1,0 +1,6 @@
+gReLU
+ipykernel
+ipython
+lightning
+ipywidgets
+jupyter
