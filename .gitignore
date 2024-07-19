@@ -12,3 +12,6 @@ scripts/wandb/
 offline_prj
 conditioning_prj/
 *temporary*
+
+*log_RL-condition_v0*
+.vscode/

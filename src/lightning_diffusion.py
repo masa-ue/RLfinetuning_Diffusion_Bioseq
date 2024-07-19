@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.optim import Adam
+import datetime
 import sys
 import time
 import tqdm
@@ -14,55 +15,8 @@ import logging
 import lightning as L
 import argparse 
 import wandb
-from lightning.pytorch.callbacks import ModelCheckpoint
-
-
-# Take Arguments 
+from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 parser = argparse.ArgumentParser()
-
-def list_of_ints(arg):
-    return list(map(int, arg.split(',')))
- 
-
-parser.add_argument("--save_folder", type=str, help="Folder to be saved")
-parser.add_argument("--train_data", type = str)
-parser.add_argument("--wandb_projectname", type = str)
-parser.add_argument("--class_number", type = int)
-parser.add_argument("--device", type = list_of_ints, default = [2])
-parser.add_argument("--wandb", type = str, default = True )
-parser.add_argument("--num_epochs", type = int, default = 100 )
-parser.add_argument("--seed_file_name", type =str )
-parser.add_argument("--time_schedule", type= str)
-
-args = parser.parse_args()
-save_folder = args.save_folder
-cuda_target = args.device
-all_class_number = args.class_number 
-wandb_true = args.wandb
-train_folder = args.train_data
-max_epochs = args.num_epochs
-wandb_projectname = args.wandb_projectname
-seed_file_name= args.seed_file_name
-time_schedule = args.time_schedule
-
-class ModelParameters:
-    diffusion_weights_file = seed_file_name  
-    device = cuda_target
-    batch_size = 256
-    num_workers = 4
-    n_time_steps = 400
-    random_order = False
-    speed_balanced = True
-    ncat = 4
-    lr = 5e-4
-    
-config = ModelParameters()
-
-torch.set_default_dtype(torch.float32)
-###### Pre-parare Dataset 
-
-train_ds = np.load(train_folder)['x']
-y1 = np.load(train_folder)['y']
 
 class Dataset(torch.utils.data.Dataset):
   'Characterizes a dataset for PyTorch'
@@ -84,20 +38,84 @@ class Dataset(torch.utils.data.Dataset):
 
 ####### Make Lightning Module ########
 
-
+def list_of_ints(arg):
+    return list(map(int, arg.split(',')))
 
 if __name__ == '__main__':
-    #################
-    training_set = Dataset(train_ds, y1 )
-    data_loader = torch.utils.data.DataLoader(training_set, batch_size = config.batch_size , shuffle=True, num_workers= 4)
+    parser.add_argument("--save_folder", type=str, default='./save_models')
+    parser.add_argument("--train_data", type=str, default='./data/y_HepG2_3class.npz')
+    parser.add_argument("--class_number", type=int, default=3)
+    parser.add_argument("--device", type=list_of_ints, default=[1])
+    parser.add_argument("--num_epochs", type=int, default=100 )
+    parser.add_argument("--run_name", type=str, default="test" )
 
+    args = parser.parse_args()
 
-    wandb.init(entity ='grelu', project= wandb_projectname, name = "diffusion") # Change depending on your proejcts
-        
-    ################### Start Training ##############
+    unique_id = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
+    run_name = args.run_name
+    run_name += f"_{unique_id}"
 
-    model = lightning_dif(config.diffusion_weights_file, time_schedule, config.speed_balanced, all_class_number, config.ncat, config.n_time_steps, config.lr )
-    checkpoint_callback = ModelCheckpoint(monitor='average-loss', save_top_k =  -1, filename = "diffusion_{epoch:03d}" )
-    trainer = L.Trainer(accelerator= "cuda", devices = cuda_target, callbacks=[checkpoint_callback], max_epochs = max_epochs )
-    trainer.fit(model, data_loader )
+    wandb.init(entity='zhao-yulai', project="Diffusion-DNA-RNA", name=run_name)
 
+    save_folder = args.save_folder + '/' + run_name
+    cuda_target = args.device
+    all_class_number = args.class_number 
+    train_folder = args.train_data
+    max_epochs = args.num_epochs
+
+    seed_file_name= './data/steps400.cat4.speed_balance.time4.0.samples100000.pth'
+    time_schedule = './data/time_dependent.npz'
+
+    class ModelParameters:
+        diffusion_weights_file = seed_file_name  
+        device = cuda_target
+        batch_size = 256
+        num_workers = 4
+        n_time_steps = 400
+        random_order = False
+        speed_balanced = True
+        ncat = 4
+        lr = 5e-4
+    
+    config = ModelParameters()
+
+    torch.set_default_dtype(torch.float32)
+    
+    ###### Pre-parare Dataset ########
+    train_ds = np.load(train_folder)['x']
+    y1 = np.load(train_folder)['y']
+    training_set = Dataset(train_ds, y1)
+    data_loader = torch.utils.data.DataLoader(training_set, batch_size = config.batch_size , shuffle=True, num_workers=4)
+    
+    ################### Start Training ###################
+    model = lightning_dif(
+                        weight_file=config.diffusion_weights_file, 
+                        time_schedule=time_schedule, 
+                        speed_balanced=config.speed_balanced, 
+                        all_class_number=all_class_number,
+                        augment=False, 
+                        ncat=config.ncat, 
+                        n_time_steps=config.n_time_steps, 
+                        lr=config.lr
+                    )
+    
+    checkpoint_callback = ModelCheckpoint(
+            dirpath = save_folder,
+            monitor='average-loss', 
+            save_top_k=-1, 
+            filename="diffusion_{epoch:03d}-{average-loss:.2f}" 
+        )
+    
+    early_stopping_callback = EarlyStopping(
+            monitor='average-loss',  # Metric to monitor
+            patience=10,             # Number of epochs to wait for improvement
+            verbose=True,
+            mode='min'               # Mode can be 'min' or 'max'
+        )
+    
+    trainer = L.Trainer(accelerator="cuda", 
+                        devices=cuda_target, 
+                        callbacks=[checkpoint_callback, early_stopping_callback], 
+                        max_epochs = max_epochs 
+                    )
+    trainer.fit(model, data_loader)

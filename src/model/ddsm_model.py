@@ -105,7 +105,7 @@ class ScoreNet(nn.Module):
 class ScoreNet_Conditional(nn.Module):
     """A time-dependent score-based model built upon U-Net architecture."""
 
-    def __init__(self, embed_dim=256, time_dependent_weights=None, all_class_number = 2, time_step=0.01):
+    def __init__(self, embed_dim=256, time_dependent_weights=None, all_class_number=3, time_step=0.01):
         """Initialize a time-dependent score-based network.
 
         Args:
@@ -144,7 +144,10 @@ class ScoreNet_Conditional(nn.Module):
         self.denses = nn.ModuleList([Dense(embed_dim, n) for _ in range(20)])
         self.norms = nn.ModuleList([nn.GroupNorm(1, n) for _ in range(20)])
         self.cls_layers = nn.ModuleList([ Dense(embed_dim, embed_dim) for _ in range(20)] )
-        self.embed_class = nn.Embedding(num_embeddings= all_class_number+1, embedding_dim= embed_dim)
+        
+        self.embed_class = nn.Embedding(num_embeddings=all_class_number+1, 
+                                        embedding_dim=embed_dim)
+        
         # The swish activation function
         self.act = lambda x: x * torch.sigmoid(x)
         self.relu = nn.ReLU()
@@ -156,7 +159,7 @@ class ScoreNet_Conditional(nn.Module):
         self.register_buffer("time_dependent_weights", time_dependent_weights)
         self.time_step = time_step
        
-    def forward(self, x, t, class_number = None, t_ind=None, return_a=False):
+    def forward(self, x, t, class_number=None, t_ind=None, return_a=False):
         # Obtain the Gaussian random feature embedding for t
         # embed: [N, embed_dim]
 
@@ -170,7 +173,61 @@ class ScoreNet_Conditional(nn.Module):
 
         # pos encoding
         for block, dense, norm, cond_class in zip(self.blocks, self.denses, self.norms, self.cls_layers):
-            h = self.act(block(norm(out + dense(embed)[:, :, None] + cond_class(cond_embed) [:, :, None] )))
+            h = self.act(block(norm(out + dense(embed)[:, :, None] + cond_class(cond_embed)[:, :, None] ))) # out:[128, 256, 50], dense(embed)[:, :, None]: [128, 256, 1], cond_class(cond_embed)[:, :, None]: [128, 256, 1]     
+          
+            if h.shape == out.shape:  # h.shape: [128, 256, 50], out.shape: [128, 256, 50]
+                out = h + out 
+            else:
+                out = h 
+
+        out = self.final(out)
+
+        out = out.permute(0, 2, 1)
+
+        if self.time_dependent_weights is not None:
+            t_step = (t / self.time_step) - 1
+            w0 = self.time_dependent_weights[t_step.long()]
+            w1 = self.time_dependent_weights[torch.clip(t_step + 1, max=len(self.time_dependent_weights) - 1).long()]
+            out = out * (w0 + (t_step - t_step.floor()) * (w1 - w0))[:, None, None]
+
+        out = out - out.mean(axis=-1, keepdims=True)
+        return out # torch.Size([128, 50, 4])
+    
+
+class AugmentedScoreNet_Conditional(ScoreNet_Conditional):
+    def __init__(self, embed_dim=256, time_dependent_weights=None, all_class_number=3, time_step=0.01, augment=False):
+        super().__init__(embed_dim, time_dependent_weights, all_class_number, time_step)
+        
+        if augment:
+            self.additional_embed_class = nn.Embedding(num_embeddings=all_class_number+1, embedding_dim=embed_dim)
+            self.additional_embed_class.weight.data.zero_()
+        else:
+            self.additional_embed_class = None
+
+    def forward(self, x, t, class_number=None, add_class_number=None, t_ind=None, return_a=False):
+        # Call the original forward method
+        embed = self.act(self.embed(t / 2))
+        cond_embed = self.embed_class(class_number)
+        
+        if add_class_number is not None:
+            assert self.additional_embed_class is not None
+            add_con_embed = self.additional_embed_class(add_class_number)
+        else:
+            add_con_embed = torch.zeros_like(cond_embed)
+
+        # Encoding path
+        out = x.permute(0, 2, 1)
+        out = self.act(self.linear(out))
+
+        # pos encoding
+        for block, dense, norm, cond_class in zip(self.blocks, self.denses, self.norms, self.cls_layers):
+            h = self.act(block(norm(out + 
+                                    dense(embed)[:, :, None] + 
+                                    cond_class(cond_embed)[:, :, None] + 
+                                    cond_class(add_con_embed)[:, :, None]
+                                    )
+                               )
+                         )  
           
             if h.shape == out.shape:
                 out = h + out 
@@ -189,5 +246,3 @@ class ScoreNet_Conditional(nn.Module):
 
         out = out - out.mean(axis=-1, keepdims=True)
         return out
-    
-

@@ -9,10 +9,11 @@ import tqdm
 
 
 
-def Euler_Maruyama_sampler_GPU(
+def Euler_Maruyama_sampler_GPU_Conditional(
         score_model,
-        origianl_model,
+        original_model,
         sample_shape,
+        condition,
         init=None,
         mask=None,
         alpha=None,
@@ -156,16 +157,16 @@ def Euler_Maruyama_sampler_GPU(
 
             with torch.enable_grad():
                 if concat_input is None:
-                    score = score_model(x, batch_time_step, None)
+                    score = score_model(x, batch_time_step, condition, None) # x: [128, 50, 4]; batch_time_step: [128], condition: [128, 1]
                 else:
-                    score = score_model(torch.cat([x, concat_input], -1), batch_time_step, None)
+                    score = score_model(torch.cat([x, concat_input], -1), batch_time_step, condition, None)
 
                 if i_step <= gradient_start:
                     transform = ddsm.gx_to_gv(score, x)
                 else:
                     transform = ddsm.gx_to_gv(score, x, True) 
-                    origianl_score = origianl_model(x, batch_time_step, None)
-                    original_transform = ddsm.gx_to_gv(origianl_score, x)  
+                    original_score = original_model(x, batch_time_step, condition, None)
+                    original_transform = ddsm.gx_to_gv(original_score, x)  
                 drift =  (
                         (0.5 * (alpha[(None,) * (v.ndim - 1)] * (1 - v)
                                 - beta[(None,) * (v.ndim - 1)] * v)) - (1 - 2 * v)
@@ -197,7 +198,26 @@ def Euler_Maruyama_sampler_GPU(
 
 
 
-def fine_tuning(score_model, reward_model, eval_model, original_model, learning_rate = 5*1e-5, num_epoch = 100, num_steps = 50, accmu = 4, length = 200, gradient_start = 45, batch_size = 32 , max_time = 4.0, min_time = 1/400, entropy_coff = 5 * 1e-6, speed_balanced = True, save_name = "trained.pth", device ='cuda' ):
+def fine_tuning(
+            score_model, 
+            reward_model, 
+            eval_model, 
+            original_model,
+            learning_rate=5*1e-5, 
+            num_epoch=100, 
+            num_steps=50, 
+            accmu=4, 
+            length=200, 
+            gradient_start=45, 
+            batch_size=32 , 
+            max_time=4.0, 
+            min_time=1/400, 
+            entropy_coff=5 * 1e-6, 
+            speed_balanced=True, 
+            save_name="trained.pth", 
+            device='cuda'
+        ):
+    
     reward_list = [ ]
     num_eval = len(eval_model)
     eval_list =[ [] for i in range(num_eval)]
@@ -205,56 +225,84 @@ def fine_tuning(score_model, reward_model, eval_model, original_model, learning_
         torch.set_grad_enabled(True)
         optim = torch.optim.Adam(score_model.parameters(), lr=learning_rate)
         
+        existing_condition = torch.randint(0,3,(batch_size,)).to(device)  ## Random condition
+        additional_condition = torch.randint(0,3,(batch_size,)).to(device)  ## Random condition
+        
         # Training 
-        logits_pred, entropy  = Euler_Maruyama_sampler_GPU(score_model, original_model,
-                            (length,4),
-                            batch_size= batch_size ,
-                            max_time= max_time,
-                            min_time= min_time,
-                            time_dilation=1,
-                            num_steps= num_steps, 
-                            gradient_start = gradient_start,
-                            eps=1e-5,
-                            speed_balanced= speed_balanced,
-                            device= device
-                            )
-        reward = reward_model(logits_pred) #### Evaluate_reward 
+        logits_pred, entropy = Euler_Maruyama_sampler_GPU_Conditional(
+                                        score_model, 
+                                        original_model,
+                                        (length,4),
+                                        condition=existing_condition,
+                                        batch_size=batch_size ,
+                                        max_time=max_time,
+                                        min_time=min_time,
+                                        time_dilation=1,
+                                        num_steps=num_steps, 
+                                        gradient_start=gradient_start,
+                                        eps=1e-5,
+                                        speed_balanced=speed_balanced,
+                                        device=device
+                                    )
+        
+        # reward = reward_model(logits_pred) #### logits_pred: [128, 50, 4] -> reward: [128,3,1]
+        probabilities = reward_model(logits_pred).squeeze(-1)
+        selected_probs = probabilities[torch.arange(probabilities.size(0)), existing_condition]
+        reward = torch.log(selected_probs + 1e-6)
+        
         loss = -torch.mean(reward - entropy_coff * entropy)/accmu
 
         loss.backward()
-        # Update (Gradient accumulation)
-        if  (k+1) % accmu ==0:
+        
+        ### Update (Gradient accumulation)
+        if  (k+1) % accmu == 0:
             print(k)
             optim.step()
             optim.zero_grad()
 
             torch.save(score_model.state_dict(), save_name +"_%d.pth"%k)
 
-            # Evaluation 
-            logits_pred  = ddsm.Euler_Maruyama_sampler(score_model,
-                            (length,4), 
-                            batch_size= batch_size*4 ,
-                            new_class = None,
-                            class_number = 1,
-                            max_time= max_time,
-                            min_time= min_time,
-                            time_dilation=1,
-                            num_steps= num_steps, 
-                            eps=1e-5,
-                            speed_balanced= speed_balanced,
-                            device= device
+            # Evaluation
+            total_samples = batch_size * 4
+                       
+            samples_per_class = [int(total_samples * 0.5), 0, int(total_samples * 0.5)]
+            eval_condition = torch.cat([torch.full((count,), i, device=device, dtype=torch.long) for i, count in enumerate(samples_per_class)])
+            
+            logits_pred  = ddsm.Euler_Maruyama_sampler(
+                                score_model,
+                                (length,4), 
+                                new_class=eval_condition,
+                                class_number=3,
+                                strength=1.0,
+                                batch_size=total_samples,
+                                max_time=max_time,
+                                min_time=min_time,
+                                time_dilation=1,
+                                num_steps=num_steps, 
+                                eps=1e-5,
+                                speed_balanced=speed_balanced,
+                                device= device
                             )
             
-            reward = torch.mean(reward_model(logits_pred)) #### Evaluate_reward 
-            reward_list.append([k,reward.item()])
-            print(reward.item() )
+            # reward = torch.mean(reward_model(logits_pred)) #### Evaluate_reward 
+
+            probabilities = reward_model(logits_pred).squeeze(-1)
+            selected_probs = probabilities[torch.arange(probabilities.size(0)), eval_condition]
+            reward = torch.mean(torch.log(selected_probs + 1e-6))
+            
+            reward_list.append([k, reward.item()])
+            print(reward.item())
 
             with torch.no_grad():
                 for i, func in enumerate(eval_model): 
-                    reward = torch.mean(func(logits_pred))
+                    # reward = torch.mean(func(logits_pred))
+                    probabilities = func(logits_pred).squeeze(-1)
+                    selected_probs = probabilities[torch.arange(probabilities.size(0)), eval_condition]
+                    reward = torch.mean(selected_probs)
+            
                     eval_list[i].append(reward.item()) 
             
-                print([np.mean(ev_list[-1]) for ev_list in eval_list ])
+                
     return reward_list, eval_list
 
 

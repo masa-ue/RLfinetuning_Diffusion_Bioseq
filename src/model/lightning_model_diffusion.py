@@ -10,7 +10,16 @@ sb = ddsm.UnitStickBreakingTransform()
 
 
 class LightningDiffusion(L.LightningModule):
-    def __init__(self, weight_file, time_schedule, speed_balanced = True, all_class_number = 2 , ncat = 4, n_time_steps = 400, lr = 1e-4):
+    def __init__(self, 
+                 weight_file, 
+                 time_schedule, 
+                 speed_balanced=True, 
+                 all_class_number=2, 
+                 augment=False, 
+                 ncat=4, 
+                 n_time_steps=400, 
+                 lr=1e-4
+            ):
 
         super().__init__() 
 
@@ -26,9 +35,16 @@ class LightningDiffusion(L.LightningModule):
         
         time_dependent_weights = torch.tensor(np.load(time_schedule)['x'])
         if all_class_number != 1:
-            self.model = modeld.ScoreNet_Conditional(time_dependent_weights=torch.sqrt(time_dependent_weights), all_class_number= all_class_number)
+            # self.model = modeld.ScoreNet_Conditional(time_dependent_weights=torch.sqrt(time_dependent_weights), all_class_number=all_class_number)
+            
+            self.model = modeld.AugmentedScoreNet_Conditional(
+                time_dependent_weights=torch.sqrt(time_dependent_weights), 
+                all_class_number=all_class_number,
+                augment = augment
+            )
         else:
             self.model = modeld.ScoreNet(time_dependent_weights=torch.sqrt(time_dependent_weights)) 
+        
         self.avg_loss = 0  
         self.num_items = 0
         self.all_class_number = all_class_number
@@ -61,10 +77,10 @@ class LightningDiffusion(L.LightningModule):
         random_timepoints = self.timepoints[random_t].to(self.device)
         
         yS = yS.type(torch.LongTensor)
-        random_list = np.random.binomial(1,0.3, yS.shape[0])
-        yS[random_list ==1 ] = self.all_class_number
+        random_list = np.random.binomial(1, 0.3, yS.shape[0])
+        yS[random_list==1] = self.all_class_number
         yS = yS.to(self.device)
-        yS = yS.to(self.device)
+        
         score = self.forward(perturbed_x, random_timepoints, yS)
 
         # the loss weighting function may change, there are a few options that we will experiment on

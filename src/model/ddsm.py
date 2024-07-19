@@ -587,6 +587,222 @@ def Euler_Maruyama_sampler(
                         zero_class = class_number * torch.ones(batch_size)
                         zero_class = zero_class.type(torch.LongTensor)
                         zero_class = zero_class.to(device)
+                        score = strength * score_model(x, batch_time_step, new_class, None) + (1.0 - strength) * score_model(x, batch_time_step, zero_class, None) 
+                    #else:
+                    #    score = score_model(torch.cat([x, concat_input], -1), batch_time_step)
+
+                    mean_v = (
+                            v + s[(None,) * (v.ndim - 1)] * (
+                            (0.5 * (alpha[(None,) * (v.ndim - 1)] * (1 - v)
+                                    - beta[(None,) * (v.ndim - 1)] * v)) - (1 - 2 * v)
+                            - (g ** 2) * gx_to_gv(score, x)
+                    ) * (-step_size) * c
+                    )
+                # next_v: [512, 50, 3]
+                next_v = mean_v + torch.sqrt(step_size * c) * \
+                         torch.sqrt(s[(None,) * (v.ndim - 1)]) * g * torch.randn_like(v)
+
+                if mask is not None:
+                    next_v[~torch.isnan(mask_v)] = mask_v[~torch.isnan(mask_v)]
+
+                v = torch.clamp(next_v, eps, 1 - eps).detach()
+            else:
+                x = x[..., np.argsort(order)]
+                order = np.random.permutation(np.arange(sample_shape[-1]))
+
+                if mask is not None:
+                    mask_v = sb.inv(mask[..., order])
+
+                v = sb._inverse(x[..., order], prevent_nan=True)
+                v = torch.clamp(v, eps, 1 - eps).detach()
+
+                g = torch.sqrt(v * (1 - v))
+                batch_time_step = torch.ones(batch_size, device=device) * time_step
+
+                with torch.enable_grad():
+                    if concat_input is None:
+                        score = score_model(x, batch_time_step)
+                    else:
+                        score = score_model(torch.cat([x, concat_input], -1), batch_time_step)
+                    mean_v = (v + s[(None,) * (v.ndim - 1)] * (
+                            (0.5 * (alpha[(None,) * (v.ndim - 1)] * (1 - v)
+                                    - beta[(None,) * (v.ndim - 1)] * v))
+                            - (1 - 2 * v) - (g ** 2) * (gx_to_gv(
+                        score[..., order],
+                        x[..., order]))
+                    ) * (-step_size) * c
+                              )
+                next_v = mean_v + torch.sqrt(step_size * c) * torch.sqrt(
+                    s[(None,) * (v.ndim - 1)]
+                ) * g * torch.randn_like(v)
+
+                if mask is not None:
+                    next_v[~torch.isnan(mask_v)] = mask_v[~torch.isnan(mask_v)]
+
+                v = torch.clamp(next_v, eps, 1 - eps).detach()
+
+    if mask is not None:
+        mean_v[~torch.isnan(mask_v)] = mask_v[~torch.isnan(mask_v)]
+
+    # Do not include any noise in the last sampling step.
+    if not random_order:
+        return sb(torch.clamp(mean_v, eps, 1 - eps))
+    else:
+        return sb(torch.clamp(mean_v, eps, 1 - eps))[..., np.argsort(order)]
+
+def Euler_Maruyama_sampler_Conditional(
+        score_model,
+        sample_shape,
+        condition,
+        new_class = None,
+        class_number = None,
+        strength = None, 
+        init=None,
+        mask=None,
+        alpha=None,
+        beta=None,
+        max_time=4,
+        min_time=0.01,
+        time_dilation=1,
+        time_dilation_start_time=None,
+        batch_size=64,
+        num_steps=100,
+        device="cuda",
+        random_order=False,
+        speed_balanced=True,
+        speed_factor=None,
+        concat_input=None,
+        eps=1e-5,
+    ):
+    """
+    Generate samples from score-based models with the Euler-Maruyama solver
+    for (multivariate) Jacobi diffusion processes with stick-breaking
+    construction.
+
+    Parameters
+    ----------
+    score_model : torch.nn.Module
+        A PyTorch time-dependent score model.
+    sample_shape : tuple
+        Shape of all dimensions of sample tensor without the batch dimension.
+    init: torch.Tensor, default is None
+        If specified, use as initial values instead of sampling from stationary distribution.
+    alpha :  torch.Tensor, default is None
+        Jacobi Diffusion parameters. If None, use default choices of alpha, beta =
+        (1, k-1), (1, k-2), (1, k-3), ..., (1, 1) where k is the number of categories.
+    beta : torch.Tensor, default is None
+        See above `for alpha`.
+    max_time : float, default is 4
+        Max time of reverse diffusion sampling.
+    min_time : float, default is 0.01
+        Min time of reverse diffusion sampling.
+    time_dilation : float, default is 1
+        Use `time_dilation > 1` to bias samples toward high density areas.
+    time_dilation_start_time : float, default is None
+        If specified, start time dilation from this timepoint to min_time.
+    batch_size : int, default is 64
+        Number of samples to generate
+    num_steps: int, default is 100
+        Total number of steps for reverse diffusion sampling.
+    device: str, default is 'cuda'
+        Use 'cuda' to run on GPU or 'cpu' to run on CPU
+    random_order : bool, default is False
+        Whether to convert x to v space with randomly ordered stick-breaking transform.
+    speed_balanced : bool, default is True
+        If True use speed factor `s=(a+b)/2`, otherwise use `s=1`.
+    eps: float, default is 1e-5
+        All state values are clamped to (eps, 1-eps) for numerical stability.
+
+
+    Returns
+    -------
+    Samples : torch.Tensor
+        Samples in x space.
+    """
+ 
+    sb = UnitStickBreakingTransform()
+    if alpha is None:
+        alpha = torch.ones(sample_shape[-1] - 1, dtype=torch.float, device=device)
+    if beta is None:
+        beta = torch.arange(
+            sample_shape[-1] - 1, 0, -1, dtype=torch.float, device=device
+        )
+
+    if speed_balanced:
+        if speed_factor is None:
+            s = 2.0 / (alpha + beta)
+        else:
+            s = speed_factor * 2.0 / (alpha + beta)
+    else:
+        s = torch.ones(sample_shape[-1] - 1).to(device)
+  
+    if init is None:
+        init_v = Beta(alpha, beta).sample((batch_size,) + sample_shape[:-1]).to(device)
+    else:
+        init_v = sb._inverse(init).to(device)
+
+    if time_dilation_start_time is None:
+        time_steps = torch.linspace(
+            max_time, min_time, num_steps * time_dilation + 1, device=device
+        )
+    else:
+        time_steps = torch.cat(
+            [
+                torch.linspace(
+                    max_time,
+                    time_dilation_start_time,
+                    round(num_steps * (max_time - time_dilation_start_time) / max_time)
+                    + 1,
+                )[:-1],
+                torch.linspace(
+                    time_dilation_start_time,
+                    min_time,
+                    round(num_steps * (time_dilation_start_time - min_time) / max_time)
+                    * time_dilation
+                    + 1,
+                ),
+            ]
+        )
+   
+    step_sizes = time_steps[:-1] - time_steps[1:]
+    time_steps = time_steps[:-1]
+    v = init_v.detach()
+
+    if mask is not None:
+        assert mask.shape[-1] == v.shape[-1]+1
+
+    if random_order:
+        order = np.arange(sample_shape[-1])
+    else:
+        if mask is not None:
+            mask_v = sb.inv(mask)
+
+    with torch.no_grad():
+        for i_step in tqdm.tqdm(range(len(time_steps))):
+            time_step = time_steps[i_step]
+            step_size = step_sizes[i_step]
+            x = sb(v)
+
+            if time_dilation_start_time is not None:
+                if time_step < time_dilation_start_time:
+                    c = time_dilation
+                else:
+                    c = 1
+            else:
+                c = time_dilation
+
+            if not random_order:
+                g = torch.sqrt(v * (1 - v))
+                batch_time_step = torch.ones(batch_size, device=device) * time_step
+
+                with torch.enable_grad():
+
+                    if (concat_input is None) and (new_class is None):
+                        score = score_model(x, batch_time_step, None)
+                    else:
+                        zero_class = class_number * torch.ones(batch_size)
+                        zero_class = zero_class.type(torch.LongTensor)
+                        zero_class = zero_class.to(device)
                         score = strength * score_model(x, batch_time_step, new_class) + (1.0 - strength) * score_model(x, batch_time_step, zero_class) 
                     #else:
                     #    score = score_model(torch.cat([x, concat_input], -1), batch_time_step)
@@ -649,8 +865,6 @@ def Euler_Maruyama_sampler(
         return sb(torch.clamp(mean_v, eps, 1 - eps))
     else:
         return sb(torch.clamp(mean_v, eps, 1 - eps))[..., np.argsort(order)]
-
-
 
 
   

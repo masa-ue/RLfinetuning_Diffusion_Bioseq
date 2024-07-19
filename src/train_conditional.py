@@ -5,15 +5,17 @@ from torch.optim import Adam
 
 import time
 import tqdm
+import datetime
 import pandas as pd
 from matplotlib import pyplot as plt
 import numpy as np
 
 import sys
-sys.path.append("../")
+# sys.path.append("../")
 import model.ddsm as ddsm
 import model.ddsm_model as modeld
 import logging
+import wandb
 
 logger = logging.getLogger()
 
@@ -25,23 +27,27 @@ parser.add_argument("--save_folder", type=str, help="Folder to be saved")
 parser.add_argument("--train_data", type = str)
 parser.add_argument("--class_number", type = int)
 parser.add_argument("--device", type = str, default = "cuda")
-parser.add_argument("--wandb", type = str, default = False )
 parser.add_argument("--num_epochs", type = int, default = 100 )
+parser.add_argument("--run_name", type = str, default = "test" )
 
 args = parser.parse_args()
-save_folder = args.save_folder
+
+
+unique_id = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
+run_name = args.run_name
+run_name += f"_{unique_id}"
+
+wandb.init(entity='zhao-yulai', project="Diffusion-DNA-RNA", name=run_name)
+
+
+save_folder = args.save_folder + '/' + run_name
 cuda_target = args.device
 all_class_number = args.class_number 
-wandb_true = args.wandb
 train_folder = args.train_data
 num_epochs = args.num_epochs
-
-if wandb_true == "True":  
-    import wandb
-    wandb.init(entity ='grelu', project="Diffusion-DNA-RNA", name = "test")
     
 class ModelParameters:
-    diffusion_weights_file = '../data/steps400.cat4.speed_balance.time4.0.samples100000.pth'
+    diffusion_weights_file = './data/steps400.cat4.speed_balance.time4.0.samples100000.pth'
     device = cuda_target
     batch_size = 128
     num_workers = 4
@@ -65,7 +71,7 @@ timepoints = timepoints.cpu()
 alpha = torch.ones(config.ncat - 1).float()
 beta =  torch.arange(config.ncat - 1, 0, -1).float()
 
-time_dependent_weights = torch.tensor(np.load('../data/time_dependent.npz')['x']).to(config.device)
+time_dependent_weights = torch.tensor(np.load('./data/time_dependent.npz')['x']).to(config.device)
 
 #### TRAINING CODE
 score_model = nn.DataParallel(modeld.ScoreNet(time_dependent_weights=torch.sqrt(time_dependent_weights)), device_ids = [config.device])
@@ -152,17 +158,15 @@ for epoch in tqdm_epoch:
         avg_loss += loss.item() * x.shape[0]
         num_items += x.shape[0]
 
-        if wandb_true == "True": 
-            wandb.log({"loss": loss})
+        wandb.log({"loss": loss})
 
         torch.save(score_model.state_dict(), save_folder+"_%d.pth"%epoch )
 
     # Print the averaged training loss so far.
     print(avg_loss / num_items)
-    if wandb_true == "True":   
-        wandb.log({"Epoch average loss": avg_loss / num_items})
-        wandb.log({"Epoch": epoch} )
+ 
+    wandb.log({"Epoch average loss": avg_loss / num_items})
+    wandb.log({"Epoch": epoch} )
     tqdm_epoch.set_description('Average Loss: {:5f}'.format(avg_loss / num_items))
 
-if wandb_true == "True":
-    wandb.finish()
+wandb.finish()
