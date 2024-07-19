@@ -50,3 +50,12 @@ pip install -r requirements.txt
 ### Citation
 
 If you find this work useful in your research, please cite:
+
+```bibtex
+@article{Uehara2024understanding,
+  title={Understanding Reinforcement Learning-Based Fine-Tuning of Diffusion Models: A Tutorial and Review},
+  author={Uehara, Masatoshi and Zhao, Yulai and Biancalani, Tommaso and Levine, Sergey},
+  journal={arXiv preprint arXiv:2407.13734},
+  year={2024}
+}
+```
