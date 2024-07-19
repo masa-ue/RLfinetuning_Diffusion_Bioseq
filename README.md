@@ -1,6 +1,6 @@
 # RL-Based Fine-Tuning of Diffusion Models for Biological Sequences  
 
-This code accompanies the tutorial/review paper on RL-based fine-tuning, where the objective is to maximize downstream reward functions by fine-tuning diffusion models with reinforcement learning (RL). In this implementation, we focus on the design of biological sequences, such as DNA (enhancers) and RNA (UTRs)..
+This code accompanies the [tutorial/review paper](https://arxiv.org/abs/2407.13734) on RL-based fine-tuning, where the objective is to maximize downstream reward functions by fine-tuning diffusion models with reinforcement learning (RL). In this implementation, we focus on the design of biological sequences, such as DNA (enhancers) and RNA (UTRs)..
 
 ![Summary](./media/summary.png)
 
