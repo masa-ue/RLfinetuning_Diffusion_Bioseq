@@ -27,7 +27,7 @@ The following compares the generated DNA sequences (enhancer) before/after fine-
 
 * We use **Dirichlet Diffusion Models** [(Avedeyev et.al, 2023)](https://arxiv.org/abs/2305.10699) as the backbone diffusion models. We acknowledge that our implementation is partly based on their codebase. We will implement more backbone diffusion models that are tailored to sequences.
 
-* Is **over-optimization** happening in the fine-tuning process?: Check paper [(Uehera and Zhao et.al, 2024)](https://arxiv.org/abs/2405.19673) on how to avoid it.
+* Is **over-optimization** happening in the fine-tuning process?: Check paper [BRAID in Uehera and Zhao et.al, 2024](https://arxiv.org/abs/2405.19673) on how to avoid it.
 
 * **Lab-in-the-loop** setting? : Check out [SEIKO](https://github.com/zhaoyl18/SEIKO), Yulai's implementation of online diffusion model fine-tuning, as well as the paper [(Uehara and Zhao et.al, 2024)](https://arxiv.org/abs/2402.16359).
 
