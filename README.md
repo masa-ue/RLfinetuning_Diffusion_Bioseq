@@ -1,6 +1,6 @@
 # RL-Based Fine-Tuning of Diffusion Models for Biological Sequences  
 
-This code accompanies the [tutorial/review paper](https://arxiv.org/abs/2407.13734) on RL-based fine-tuning, where the objective is to maximize downstream reward functions by fine-tuning diffusion models with reinforcement learning (RL). In this implementation, we focus on the design of biological sequences, such as DNA (enhancers) and RNA (UTRs)..
+This code accompanies the [tutorial/review paper](https://arxiv.org/abs/2407.13734) on RL-based fine-tuning, where the objective is to maximize downstream reward functions by fine-tuning diffusion models with reinforcement learning (RL). In this implementation, we focus on the design of biological sequences, such as DNA (enhancers) and RNA (UTRs).
 
 ![Summary](./media/summary.png)
 
@@ -29,7 +29,7 @@ The following compares the generated DNA sequences (enhancer) before/after fine-
 
 * Is **over-optimization** happening in the fine-tuning process?: Check paper [BRAID in Uehera and Zhao et.al, 2024](https://arxiv.org/abs/2405.19673) on how to avoid it.
 
-* **Lab-in-the-loop** setting? : Check out [SEIKO](https://github.com/zhaoyl18/SEIKO), Yulai's implementation of online diffusion model fine-tuning, as well as the paper [(Uehara and Zhao et.al, 2024)](https://arxiv.org/abs/2402.16359).
+* **Lab-in-the-loop** setting? : Check out [SEIKO](https://github.com/zhaoyl18/SEIKO), implementation of online diffusion model fine-tuning, as well as the paper [(Uehara and Zhao et.al, 2024)](https://arxiv.org/abs/2402.16359).
 
 ### Acknowledgement
 
