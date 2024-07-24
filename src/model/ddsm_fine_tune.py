@@ -5,15 +5,18 @@ from torch.utils.data import DataLoader, Dataset
 from torch.nn.functional import one_hot
 from . import ddsm
 import numpy as np
-import tqdm
 
-
+import pandas as pd
+from scipy.stats import pearsonr
+from sklearn.metrics import r2_score
 
 def Euler_Maruyama_sampler_GPU_Conditional(
         score_model,
         original_model,
         sample_shape,
-        condition,
+        existing_condition,
+        additional_condition,
+        strength,
         init=None,
         mask=None,
         alpha=None,
@@ -137,7 +140,7 @@ def Euler_Maruyama_sampler_GPU_Conditional(
     entropy = torch.zeros(batch_size).to(device)
     
     #with torch.no_grad():
-    for i_step in tqdm.tqdm(range(len(time_steps))):
+    for i_step in range(len(time_steps)):
         time_step = time_steps[i_step]
         step_size = step_sizes[i_step]
         x = sb(v)
@@ -157,15 +160,20 @@ def Euler_Maruyama_sampler_GPU_Conditional(
 
             with torch.enable_grad():
                 if concat_input is None:
-                    score = score_model(x, batch_time_step, condition, None) # x: [128, 50, 4]; batch_time_step: [128], condition: [128, 1]
+                    # score = score_model(x, batch_time_step, condition, additional_condition, None) # x: [128, 50, 4]; batch_time_step: [128], condition: [128, 1]
+                    zero_class = torch.zeros(batch_size).type(torch.FloatTensor).to(device)
+                    score = strength * score_model(x, batch_time_step, existing_condition, additional_condition) +\
+                        (1.0 - strength) * score_model(x, batch_time_step, zero_class, zero_class) 
                 else:
-                    score = score_model(torch.cat([x, concat_input], -1), batch_time_step, condition, None)
+                    # score = score_model(torch.cat([x, concat_input], -1), batch_time_step, 
+                    #         existing_condition, additional_condition, None)
+                    raise NotImplementedError
 
                 if i_step <= gradient_start:
                     transform = ddsm.gx_to_gv(score, x)
                 else:
                     transform = ddsm.gx_to_gv(score, x, True) 
-                    original_score = original_model(x, batch_time_step, condition, None)
+                    original_score = original_model(x, batch_time_step, existing_condition, None)
                     original_transform = ddsm.gx_to_gv(original_score, x)  
                 drift =  (
                         (0.5 * (alpha[(None,) * (v.ndim - 1)] * (1 - v)
@@ -209,32 +217,39 @@ def fine_tuning(
             accmu=4, 
             length=200, 
             gradient_start=45, 
-            batch_size=32 , 
+            batch_size=32,
+            guidance_strength=5.0, 
             max_time=4.0, 
             min_time=1/400, 
             entropy_coff=5 * 1e-6, 
             speed_balanced=True, 
-            save_name="trained.pth", 
+            save_folder="log/", 
             device='cuda'
         ):
     
-    reward_list = [ ]
-    num_eval = len(eval_model)
-    eval_list =[ [] for i in range(num_eval)]
+    # reward_list = [ ]
+    # num_eval = len(eval_model)
+    # eval_list =[ [] for i in range(num_eval)]
+    
+    eval_pearson_old = []
+    eval_pearson_new = []
+    
     for k in range(num_epoch): 
         torch.set_grad_enabled(True)
         optim = torch.optim.Adam(score_model.parameters(), lr=learning_rate)
         
-        existing_condition = torch.randint(0,3,(batch_size,)).to(device)  ## Random condition
-        additional_condition = torch.randint(0,3,(batch_size,)).to(device)  ## Random condition
+        existing_condition = torch.empty(batch_size, device=device).uniform_(-1, 1)
+        additional_condition = torch.empty(batch_size, device=device).uniform_(-1, 1)
         
         # Training 
         logits_pred, entropy = Euler_Maruyama_sampler_GPU_Conditional(
                                         score_model, 
                                         original_model,
                                         (length,4),
-                                        condition=existing_condition,
-                                        batch_size=batch_size ,
+                                        existing_condition=existing_condition,
+                                        additional_condition=additional_condition,
+                                        strength=guidance_strength,
+                                        batch_size=batch_size,
                                         max_time=max_time,
                                         min_time=min_time,
                                         time_dilation=1,
@@ -245,65 +260,87 @@ def fine_tuning(
                                         device=device
                                     )
         
-        # reward = reward_model(logits_pred) #### logits_pred: [128, 50, 4] -> reward: [128,3,1]
-        probabilities = reward_model(logits_pred).squeeze(-1)
-        selected_probs = probabilities[torch.arange(probabilities.size(0)), existing_condition]
-        reward = torch.log(selected_probs + 1e-6)
+        raw_reward = reward_model(logits_pred)[:,1].squeeze(1) #### logits_pred: [128, 50, 4] -> reward: [128,3,1]
+        cls_reward = -torch.square(raw_reward - additional_condition)
+        # probabilities = reward_model(logits_pred).squeeze(-1)
+        # selected_probs = probabilities[torch.arange(probabilities.size(0)), existing_condition]
+        # reward = torch.log(selected_probs + 1e-6)
         
-        loss = -torch.mean(reward - entropy_coff * entropy)/accmu
+        loss = -torch.mean(cls_reward - entropy_coff * entropy)/accmu
+        entropy_accum = torch.mean(entropy)/accmu
+        
+        pearson_k562, _ = pearsonr(raw_reward.detach().cpu().numpy(), 
+                        additional_condition.cpu().numpy())
+        
+        print('Epoch: %d | Loss: %.2f | entropy: %.2f | K562 Pearson %.2f \n'%(k, loss.item(), entropy_accum.item(), pearson_k562))
 
         loss.backward()
         
         ### Update (Gradient accumulation)
         if  (k+1) % accmu == 0:
-            print(k)
             optim.step()
             optim.zero_grad()
 
-            torch.save(score_model.state_dict(), save_name +"_%d.pth"%k)
+            torch.save(score_model.state_dict(), save_folder +"/%d.pth"%k)
 
             # Evaluation
-            total_samples = batch_size * 4
+            total_samples = batch_size * 2
                        
-            samples_per_class = [int(total_samples * 0.5), 0, int(total_samples * 0.5)]
-            eval_condition = torch.cat([torch.full((count,), i, device=device, dtype=torch.long) for i, count in enumerate(samples_per_class)])
+            # samples_per_class = [int(total_samples * 0.5), 0, int(total_samples * 0.5)]
+            # eval_condition = torch.cat([torch.full((count,), i, device=device, dtype=torch.long) for i, count in enumerate(samples_per_class)])
             
-            logits_pred  = ddsm.Euler_Maruyama_sampler(
-                                score_model,
-                                (length,4), 
-                                new_class=eval_condition,
-                                class_number=3,
-                                strength=1.0,
-                                batch_size=total_samples,
-                                max_time=max_time,
-                                min_time=min_time,
-                                time_dilation=1,
-                                num_steps=num_steps, 
-                                eps=1e-5,
-                                speed_balanced=speed_balanced,
-                                device= device
-                            )
+            eval_existing_condition = torch.empty(total_samples, device=device).uniform_(-1, 4)
+            eval_additional_condition = torch.empty(total_samples, device=device).uniform_(-1, 4)
             
-            # reward = torch.mean(reward_model(logits_pred)) #### Evaluate_reward 
-
-            probabilities = reward_model(logits_pred).squeeze(-1)
-            selected_probs = probabilities[torch.arange(probabilities.size(0)), eval_condition]
-            reward = torch.mean(torch.log(selected_probs + 1e-6))
-            
-            reward_list.append([k, reward.item()])
-            print(reward.item())
-
             with torch.no_grad():
-                for i, func in enumerate(eval_model): 
-                    # reward = torch.mean(func(logits_pred))
-                    probabilities = func(logits_pred).squeeze(-1)
-                    selected_probs = probabilities[torch.arange(probabilities.size(0)), eval_condition]
-                    reward = torch.mean(selected_probs)
+                logits_pred  = ddsm.Euler_Maruyama_sampler(
+                                    score_model,
+                                    (length,4), 
+                                    existing_condition = eval_existing_condition,
+                                    additional_condition = eval_additional_condition,
+                                    class_number=0,
+                                    strength=guidance_strength,
+                                    batch_size=total_samples,
+                                    max_time=max_time,
+                                    min_time=min_time,
+                                    time_dilation=1,
+                                    num_steps=num_steps, 
+                                    eps=1e-5,
+                                    speed_balanced=speed_balanced,
+                                    device= device
+                                )
+                
+                # reward = torch.mean(reward_model(logits_pred)[:,1]) #### Evaluate_reward 
+                
+                raw_reward_old_condition = reward_model(logits_pred)[:,0].squeeze(1)
+                raw_reward_new_condition = reward_model(logits_pred)[:,1].squeeze(1)
+
+                pearson_old, _ = pearsonr(raw_reward_old_condition.detach().cpu().numpy(), eval_existing_condition.cpu().numpy())
+                pearson_new, _ = pearsonr(raw_reward_new_condition.detach().cpu().numpy(), eval_additional_condition.cpu().numpy())
+                
+            print('Evaluation ------ HepG2 Pearson: %.3f | K562 Pearson: %.3f\n'%(pearson_old, pearson_new))
             
-                    eval_list[i].append(reward.item()) 
+            eval_pearson_old.append(pearson_old)
+            eval_pearson_new.append(pearson_new)
+            
+            # probabilities = reward_model(logits_pred).squeeze(-1)
+            # selected_probs = probabilities[torch.arange(probabilities.size(0)), eval_condition]
+            # reward = torch.mean(torch.log(selected_probs + 1e-6))
+            
+            # reward_list.append([k, reward.item()])
+            # print(reward.item())
+
+            # with torch.no_grad():
+            #     for i, func in enumerate(eval_model): 
+            #         reward = torch.mean(func(logits_pred))
+            #         # probabilities = func(logits_pred).squeeze(-1)
+            #         # selected_probs = probabilities[torch.arange(probabilities.size(0)), eval_condition]
+            #         # reward = torch.mean(selected_probs)
+            
+            #         eval_list[i].append(reward.item()) 
             
                 
-    return reward_list, eval_list
+    return eval_pearson_old, eval_pearson_new
 
 
  

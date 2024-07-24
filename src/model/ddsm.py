@@ -438,7 +438,8 @@ class GaussianFourierProjection(nn.Module):
 def Euler_Maruyama_sampler(
         score_model,
         sample_shape,
-        new_class = None,
+        existing_condition = None,
+        additional_condition = None,
         class_number = None,
         strength = None, 
         init=None,
@@ -562,7 +563,7 @@ def Euler_Maruyama_sampler(
             mask_v = sb.inv(mask)
 
     with torch.no_grad():
-        for i_step in tqdm.tqdm(range(len(time_steps))):
+        for i_step in range(len(time_steps)):
             time_step = time_steps[i_step]
             step_size = step_sizes[i_step]
             x = sb(v)
@@ -581,13 +582,12 @@ def Euler_Maruyama_sampler(
 
                 with torch.enable_grad():
 
-                    if (concat_input is None) and (new_class is None):
+                    if (concat_input is None) and (existing_condition is None) and (additional_condition is None):
                         score = score_model(x, batch_time_step, None)
                     else:
-                        zero_class = class_number * torch.ones(batch_size)
-                        zero_class = zero_class.type(torch.LongTensor)
-                        zero_class = zero_class.to(device)
-                        score = strength * score_model(x, batch_time_step, new_class, None) + (1.0 - strength) * score_model(x, batch_time_step, zero_class, None) 
+                        zero_class = torch.zeros(batch_size).type(torch.FloatTensor).to(device)
+                        score = strength * score_model(x, batch_time_step, existing_condition, additional_condition) +\
+                            (1.0 - strength) * score_model(x, batch_time_step, zero_class, zero_class) 
                     #else:
                     #    score = score_model(torch.cat([x, concat_input], -1), batch_time_step)
 

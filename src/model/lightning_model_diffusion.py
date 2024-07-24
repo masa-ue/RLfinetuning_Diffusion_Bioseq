@@ -14,11 +14,14 @@ class LightningDiffusion(L.LightningModule):
                  weight_file, 
                  time_schedule, 
                  speed_balanced=True, 
-                 all_class_number=2, 
+                 all_class_number=0, 
                  augment=False, 
                  ncat=4, 
                  n_time_steps=400, 
-                 lr=1e-4
+                 lr=1e-4,
+                 continuous=False,
+                 y_low=0,
+                 y_high=10,
             ):
 
         super().__init__() 
@@ -33,8 +36,19 @@ class LightningDiffusion(L.LightningModule):
         self.v_zero_loggrad = v_zero_loggrad.cpu()
         self.timepoints = timepoints.cpu()
         
+        self.continuous = continuous
+        
         time_dependent_weights = torch.tensor(np.load(time_schedule)['x'])
-        if all_class_number != 1:
+        
+        if self.continuous:
+            self.model = modeld.AugmentedScoreNet_Continuous(
+                time_dependent_weights=torch.sqrt(time_dependent_weights),
+                y_low=y_low, 
+                y_high=y_high,
+                augment = augment
+            )
+        
+        elif all_class_number != 1:
             # self.model = modeld.ScoreNet_Conditional(time_dependent_weights=torch.sqrt(time_dependent_weights), all_class_number=all_class_number)
             
             self.model = modeld.AugmentedScoreNet_Conditional(
@@ -42,6 +56,7 @@ class LightningDiffusion(L.LightningModule):
                 all_class_number=all_class_number,
                 augment = augment
             )
+            
         else:
             self.model = modeld.ScoreNet(time_dependent_weights=torch.sqrt(time_dependent_weights)) 
         
@@ -76,9 +91,13 @@ class LightningDiffusion(L.LightningModule):
         perturbed_x_grad = perturbed_x_grad.to(self.device)
         random_timepoints = self.timepoints[random_t].to(self.device)
         
-        yS = yS.type(torch.LongTensor)
-        random_list = np.random.binomial(1, 0.3, yS.shape[0])
-        yS[random_list==1] = self.all_class_number
+        if self.continuous:
+            yS = yS.type(torch.FloatTensor)
+        else:
+            yS = yS.type(torch.LongTensor)
+            random_list = np.random.binomial(1, 0.3, yS.shape[0])
+            yS[random_list==1] = self.all_class_number
+            
         yS = yS.to(self.device)
         
         score = self.forward(perturbed_x, random_timepoints, yS)

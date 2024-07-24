@@ -13,5 +13,8 @@ offline_prj
 conditioning_prj/
 *temporary*
 
+logs/
+media/
+
 *log_RL-condition_v0*
 .vscode/

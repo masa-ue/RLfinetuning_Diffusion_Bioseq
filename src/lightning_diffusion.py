@@ -43,11 +43,15 @@ def list_of_ints(arg):
 
 if __name__ == '__main__':
     parser.add_argument("--save_folder", type=str, default='./save_models')
-    parser.add_argument("--train_data", type=str, default='./data/y_HepG2_3class.npz')
-    parser.add_argument("--class_number", type=int, default=3)
+    parser.add_argument("--train_data", type=str, default='./data/y_HepG2_relabel.npz')
+    parser.add_argument("--class_number", type=int, default=0)
     parser.add_argument("--device", type=list_of_ints, default=[1])
     parser.add_argument("--num_epochs", type=int, default=100 )
     parser.add_argument("--run_name", type=str, default="test" )
+    parser.add_argument("--continuous", type=bool, default=True)
+    parser.add_argument("--y_min", type=float, default=-4.0)
+    parser.add_argument("--y_max", type=float, default=10.0)
+    parser.add_argument("--lr", type=float, default=5e-4)
 
     args = parser.parse_args()
 
@@ -55,6 +59,7 @@ if __name__ == '__main__':
     run_name = args.run_name
     run_name += f"_{unique_id}"
 
+    wandb.login(host="https://genentech.wandb.io")
     wandb.init(entity='zhao-yulai', project="Diffusion-DNA-RNA", name=run_name)
 
     save_folder = args.save_folder + '/' + run_name
@@ -62,6 +67,10 @@ if __name__ == '__main__':
     all_class_number = args.class_number 
     train_folder = args.train_data
     max_epochs = args.num_epochs
+    continuous = args.continuous
+    y_min = args.y_min
+    y_max = args.y_max
+    lr = args.lr
 
     seed_file_name= './data/steps400.cat4.speed_balance.time4.0.samples100000.pth'
     time_schedule = './data/time_dependent.npz'
@@ -75,7 +84,7 @@ if __name__ == '__main__':
         random_order = False
         speed_balanced = True
         ncat = 4
-        lr = 5e-4
+        lr = lr
     
     config = ModelParameters()
 
@@ -96,11 +105,14 @@ if __name__ == '__main__':
                         augment=False, 
                         ncat=config.ncat, 
                         n_time_steps=config.n_time_steps, 
-                        lr=config.lr
+                        lr=config.lr,
+                        continuous=continuous,
+                        y_low=y_min,
+                        y_high=y_max
                     )
     
     checkpoint_callback = ModelCheckpoint(
-            dirpath = save_folder,
+            dirpath=save_folder,
             monitor='average-loss', 
             save_top_k=-1, 
             filename="diffusion_{epoch:03d}-{average-loss:.2f}" 
