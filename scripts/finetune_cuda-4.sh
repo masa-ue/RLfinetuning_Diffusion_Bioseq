@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Hyperparameter values to iterate over
-y_high_values=(1 2 4)
-guidance_strength_values=(5 10 20)
-gradient_accumulation_steps_values=(4 8)
-lr_values=(3e-4 1e-4)
-KL_weight_values=(1e-2)
+y_high_values=(1 4)
+guidance_strength_values=(5 10)
+gradient_accumulation_steps_values=(8 16 24)
+lr_values=(3e-4 5e-4 1e-3)
+KL_weight_values=(1e-2 1)
 
 # Iterate over each combination of hyperparameter values
 for y_high in "${y_high_values[@]}"; do
