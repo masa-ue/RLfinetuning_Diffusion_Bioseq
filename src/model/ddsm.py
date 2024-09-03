@@ -458,6 +458,7 @@ def Euler_Maruyama_sampler(
         speed_factor=None,
         concat_input=None,
         eps=1e-5,
+        augment=False
 ):
     """
     Generate samples from score-based models with the Euler-Maruyama solver
@@ -585,9 +586,13 @@ def Euler_Maruyama_sampler(
                     if (concat_input is None) and (existing_condition is None) and (additional_condition is None):
                         score = score_model(x, batch_time_step, None)
                     else:
-                        zero_class = torch.zeros(batch_size).type(torch.FloatTensor).to(device)
-                        score = strength * score_model(x, batch_time_step, existing_condition, additional_condition) +\
-                            (1.0 - strength) * score_model(x, batch_time_step, zero_class, zero_class) 
+                        zero_class = torch.zeros(batch_size).type(torch.LongTensor).to(device)
+                        if augment:
+                            score = strength * score_model(x, batch_time_step, existing_condition, additional_condition) +\
+                            (1.0 - strength) * score_model(x, batch_time_step, zero_class, zero_class)
+                        else:
+                            score = strength * score_model(x, batch_time_step, existing_condition) +\
+                            (1.0 - strength) * score_model(x, batch_time_step, zero_class)
                     #else:
                     #    score = score_model(torch.cat([x, concat_input], -1), batch_time_step)
 

@@ -48,7 +48,7 @@ if __name__ == '__main__':
     parser.add_argument("--device", type=list_of_ints, default=[1])
     parser.add_argument("--num_epochs", type=int, default=100 )
     parser.add_argument("--run_name", type=str, default="test" )
-    parser.add_argument("--continuous", type=bool, default=True)
+    parser.add_argument("--continuous", action='store_true', default=False)
     parser.add_argument("--y_min", type=float, default=-4.0)
     parser.add_argument("--y_max", type=float, default=10.0)
     parser.add_argument("--lr", type=float, default=5e-4)
@@ -59,8 +59,7 @@ if __name__ == '__main__':
     run_name = args.run_name
     run_name += f"_{unique_id}"
 
-    wandb.login(host="https://genentech.wandb.io")
-    wandb.init(entity='zhao-yulai', project="Diffusion-DNA-RNA", name=run_name)
+    wandb.init(project="Diffusion-DNA-RNA-new", name=run_name)
 
     save_folder = args.save_folder + '/' + run_name
     cuda_target = args.device
@@ -72,8 +71,8 @@ if __name__ == '__main__':
     y_max = args.y_max
     lr = args.lr
 
-    seed_file_name= './data/steps400.cat4.speed_balance.time4.0.samples100000.pth'
-    time_schedule = './data/time_dependent.npz'
+    seed_file_name= 'tutorials/Human-enhancer/artifacts/DNA-dataset:v0/steps400.cat4.speed_balance.time4.0.samples100000.pth'
+    time_schedule = 'tutorials/Human-enhancer/artifacts/DNA-dataset:v0/time_dependent.npz'
 
     class ModelParameters:
         diffusion_weights_file = seed_file_name  

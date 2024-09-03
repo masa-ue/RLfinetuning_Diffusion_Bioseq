@@ -205,14 +205,14 @@ class AugmentedScoreNet_Conditional(ScoreNet_Conditional):
         else:
             self.additional_embed_class = None
 
-    def forward(self, x, t, existing_condition=None, add_condition=None, t_ind=None, return_a=False):
+    def forward(self, x, t, class_number=None, add_class_number=None, t_ind=None, return_a=False):
         # Call the original forward method
         embed = self.act(self.embed(t / 2))
-        cond_embed = self.embed_class(existing_condition)
+        cond_embed = self.embed_class(class_number)
         
-        if add_condition is not None:
+        if add_class_number is not None:
             assert self.additional_embed_class is not None
-            add_con_embed = self.additional_embed_class(add_condition)
+            add_con_embed = self.additional_embed_class(add_class_number)
         else:
             add_con_embed = torch.zeros_like(cond_embed)
 
