@@ -27,20 +27,19 @@ from tqdm import tqdm
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint_path', type=str,
-                        default='./save_models/hepg2_continuous/V2/-1_4-lr=1e-3/_2024.07.21_15.05.16/diffusion_epoch=156-average-loss=0.30.ckpt')
+                        default='save_models/MRPA/Hepg2_10class_V2/_2024.09.06_23.49.48/diffusion_epoch=347-average-loss=0.288.ckpt')
     
-    parser.add_argument('--device', type=str, default='cuda:1')
-    parser.add_argument('--y_low', type=float, default=-1.0)
-    parser.add_argument('--y_high', type=float, default=4.0)
-    
-    parser.add_argument("--guidance_strength", type=float, default=5.0)
+    parser.add_argument('--device', type=str, default='cuda:3')
+    parser.add_argument("--guidance_strength", type=float, default=20.0)
+    parser.add_argument("--additional_embed_lr", type=float, default=1e-1)
     parser.add_argument("--lr", type=float, default=3e-4)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=4)
-    parser.add_argument("--num_epoch", type=int, default=500)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
+    parser.add_argument("--validation_epoch", type=int, default=4)
+    parser.add_argument("--num_epoch", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--KL_weight", type=float, default=0.0)
     
-    parser.add_argument('--save_folder', type=str, default='logs/RL-condition_continuous_v3')
+    parser.add_argument('--save_folder', type=str, default='logs/RL-condition_discrete_new')
     
     return parser.parse_args()
 
@@ -49,7 +48,7 @@ def main():
 
     unique_id = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
     
-    run_name = f"gamma={args.guidance_strength}_Y={(args.y_low,args.y_high)}_bs={args.batch_size * args.gradient_accumulation_steps}_lr={args.lr:g}_KL={args.KL_weight}_{unique_id}"
+    run_name = f"gamma={args.guidance_strength}/bs={args.batch_size * args.gradient_accumulation_steps}/lr=({args.lr:g}, {args.additional_embed_lr:g})/_{unique_id}"
     
     save_folder = os.path.join(args.save_folder, unique_id)
     save_folder_eval = os.path.join(save_folder, 'eval_vis')
@@ -59,24 +58,42 @@ def main():
         os.makedirs(save_folder)
         os.makedirs(save_folder_eval)
     
-    wandb.login(host="https://genentech.wandb.io")
-    wandb.init(entity='zhao-yulai', project="Finetune-DNA-v3", \
+    wandb.init(entity='sarosavo', project="Finetune-DNA-new", \
                name=run_name, config=args)
     
     config = wandb.config
 
-    diffusion_weights_file = 'tutorials/Human-enhancer/artifacts/MPRA-dataset:v2/steps400.cat4.speed_balance.time4.0.samples100000.pth'
-    time_schedule = 'tutorials/Human-enhancer/artifacts/MPRA-dataset:v2/time_dependent.npz'
+    diffusion_weights_file = 'tutorials/Human-enhancer/artifacts/DNA-dataset:v0/steps400.cat4.speed_balance.time4.0.samples100000.pth'
+    time_schedule = 'tutorials/Human-enhancer/artifacts/DNA-dataset:v0/time_dependent.npz'
     
     DEVICE = config.device
     
     reward_model = LightningModel.load_from_checkpoint(
-        "./save_models/eval_reward_models/hepg2_regressor.ckpt"
+        "tutorials/Human-enhancer/experiment/lightning_logs/l9s47rcz/checkpoints/epoch=4-step=4610.ckpt"
     )
-
     reward_model.eval()
     reward_model.requires_grad_(False)
     reward_model.to(DEVICE)
+    
+    eval_model = LightningModel.load_from_checkpoint("tutorials/Human-enhancer/artifacts/DNA-model:v0/reward_model.ckpt")
+    eval_model.eval()
+    eval_model.requires_grad_(False)
+    eval_model.to(DEVICE)
+    
+    # Function to calculate rewards for each condition
+    def calculate_rewards(samples_condition):
+        rewards = []
+        data_loader = torch.utils.data.DataLoader(
+            samples_condition.astype("float32"), 
+            batch_size=128, 
+            num_workers=0
+        )
+        for batch in data_loader:
+            batch = (batch > 0.5) * torch.ones_like(batch)
+            batch = torch.permute(batch, (0, 2, 1)).to(DEVICE)
+            rewards.append(eval_model(batch).detach().cpu())
+        
+        return np.concatenate(rewards)
 
     def new_reward_model(x):
         x = torch.nn.functional.softmax(x / 0.1, -1)  # x: [128, 50, 4]
@@ -88,9 +105,8 @@ def main():
         weight_file=diffusion_weights_file, 
         time_schedule=time_schedule, 
         augment=False,
-        continuous=True,
-        y_low=-1.0,
-        y_high=4.0
+        continuous=False,
+        all_class_number=10,
     )
 
     original_model = original_model.model
@@ -109,9 +125,8 @@ def main():
         weight_file=diffusion_weights_file,
         time_schedule=time_schedule,
         augment=True,
-        continuous=True,
-        y_low=-1.0,
-        y_high=4.0
+        continuous=False,
+        all_class_number=10,
     )
 
     # Load the state dictionary
@@ -119,7 +134,7 @@ def main():
 
     # Update the model state dictionary with the checkpoint values, except the additional embed parameters
     for k, v in checkpoint['state_dict'].items():
-        if k not in {'model.additional_embed.0.W', 'model.additional_embed.1.bias', 'model.additional_embed.1.weight'}:
+        if k not in {'model.additional_embed_class.weight'}:
             model_dict[k] = v
 
     new_lightning_dif_model.load_state_dict(model_dict)
@@ -134,22 +149,31 @@ def main():
     # freeze time's embeddings
     score_model.embed.requires_grad_(False)
     score_model.embed.eval()
-
-    assert score_model.additional_embed[1].weight.requires_grad == True
-
-    # starting fine-tuning
-    eval_pearson_old = []
-    eval_pearson_new = []
+    
+    assert score_model.additional_embed_class.weight.requires_grad == True
     
     best_loss = 999
-    optim = torch.optim.Adam(score_model.parameters(), lr=config.lr)
+    
+    # optim = torch.optim.Adam(score_model.parameters(), lr=config.lr)
+    optim = torch.optim.Adam([
+        {'params': score_model.additional_embed_class.parameters(), 'lr': config.additional_embed_lr},  # Custom learning rate for additional_embed_class
+        {'params': [param for name, param in score_model.named_parameters() 
+                if "additional_embed_class" not in name], 'lr': config.lr},
+    ])
 
     for k in tqdm(range(config.num_epoch), desc="Epochs"): 
         score_model.train()
         torch.set_grad_enabled(True)
         
-        existing_condition = torch.empty(config.batch_size, device=DEVICE).uniform_(-1, args.y_high)
-        additional_condition = torch.empty(config.batch_size, device=DEVICE).uniform_(-1, args.y_high)
+        # existing_condition = torch.randint(0,10,(config.batch_size,)).to(DEVICE)  ## Random condition
+        existing_condition = torch.randint(0, 2, (config.batch_size,)).to(DEVICE)*9
+        
+        additional_condition = torch.cat((
+            torch.zeros(config.batch_size // 2, dtype=torch.long),
+            torch.full((config.batch_size // 2,), 9, dtype=torch.long)
+        )).to(DEVICE)
+        # additional_condition = torch.full((config.batch_size,), 0, dtype=torch.long).to(DEVICE)
+        
         
         # Training 
         logits_pred, entropy = Euler_Maruyama_sampler_GPU_Conditional(
@@ -167,139 +191,167 @@ def main():
                                     gradient_start=45,
                                     eps=1e-5,
                                     speed_balanced=True,
-                                    device=DEVICE
+                                    device=DEVICE,
+                                    continuous=False
                                 )
         
-        raw_reward = new_reward_model(logits_pred)[:,1].squeeze(1) #### logits_pred: [128, 50, 4] -> reward: [128,3,1]
-        cls_reward = -torch.square(raw_reward - additional_condition)
+        probabilities = new_reward_model(logits_pred).squeeze(-1)  # (batch, 200, 4) -> (batch, 10)
         
-        loss = -torch.mean(cls_reward - config.KL_weight * entropy)/config.gradient_accumulation_steps
-        entropy_accum = torch.mean(entropy)/config.gradient_accumulation_steps
+        # choose between two groups of classes or just two classes
+        # selected_probs = probabilities[torch.arange(probabilities.size(0)), additional_condition]
         
-        pearson_k562, _ = pearsonr(raw_reward.detach().cpu().numpy(), 
-                        additional_condition.cpu().numpy())
+        selected_probs = torch.zeros(probabilities.size(0)).to(DEVICE)
+        group_1 = torch.tensor([0, 1, 2, 3, 4]).to(DEVICE)
+        group_2 = torch.tensor([5, 6, 7, 8, 9]).to(DEVICE)
+        for i in range(probabilities.size(0)):
+            if additional_condition[i] == 0:
+                selected_probs[i] = probabilities[i, group_1].sum()  # Sum for classes 0 to 4
+            else:
+                selected_probs[i] = probabilities[i, group_2].sum()  # Sum for classes 5 to 9
         
-        hepg2_rewards = new_reward_model(logits_pred)[:,0].squeeze(1)
-        pearson_hepg2, _ = pearsonr(hepg2_rewards.detach().cpu().numpy(), 
-                        existing_condition.cpu().numpy())
+        reward = torch.log(selected_probs)
         
-        # print('Epoch: %d | Loss: %.2f | entropy: %.2f | K562 Pearson %.2f \n'%(k, loss.item(), entropy_accum.item(), pearson_k562))
+        loss = -torch.mean(reward - config.KL_weight * entropy)/config.gradient_accumulation_steps
+
+        loss.backward()
 
         wandb.log({
             'Train/epoch': k,
-            'Train/loss': loss.item(),
-            'Train/entropy': entropy_accum.item(),
-            'Train/K562 Pearson': pearson_k562,
-            'Train/HepG2 Pearson': pearson_hepg2
-        })
-
-        loss.backward()
+            'Train/reward': torch.mean(reward).item(),
+            'Train/loss': loss.item()*config.gradient_accumulation_steps,
+            'Train/entropy': torch.mean(entropy).item(),
+            'Train/embedding_norm': torch.norm(score_model.embed_class.weight).item(),
+            'Train/additional_embedding_norm': torch.norm(score_model.additional_embed_class.weight).item(),
+        }, step=k)
         
         # Save checkpoint for best loss
         if loss.item() < best_loss:
-            best_loss = loss.item()
-            best_pearson_old = pearson_hepg2
-            best_pearson_new = pearson_k562
-            
-            print(f'Best loss updated: {best_loss:.2f},\
-                  HepG2 Pearson: {best_pearson_old:.2f}, \
-                  K562 Pearson: {best_pearson_new:.2f}')
-            
-            torch.save(score_model.state_dict(), save_folder + "/model_ckpt=%d.pth"%k)
+            best_loss = loss.item()*config.gradient_accumulation_steps
+            print(f'Best loss updated: {best_loss:.2f}')
+            torch.save(score_model.state_dict(), save_folder + "/best_model.pth")
         
         ### Update (Gradient accumulation)
         if  (k+1) % config.gradient_accumulation_steps == 0:
             optim.step()
             optim.zero_grad()
             
-            # Evaluation
-            total_samples = 2 * config.batch_size
-                    
-            eval_existing_condition = torch.empty(total_samples, device=DEVICE).uniform_(-1, args.y_high)
-            eval_additional_condition = torch.empty(total_samples, device=DEVICE).uniform_(-1, args.y_high)
-            
-            with torch.no_grad():
+            if (k+1) % config.validation_epoch == 0:
+                # Evaluation: create conditions for 10 classes
+                conditions_10class = [torch.tensor([i,] * config.batch_size, device=DEVICE, dtype=torch.long) for i in range(10)]
+                allsamples_original_conditions_low = [[] for _ in range(10)]
+                allsamples_original_conditions_high = [[] for _ in range(10)]
+                
                 score_model.eval()
-                logits_pred  = ddsm.Euler_Maruyama_sampler(
-                                    score_model,
-                                    (200, 4), 
-                                    existing_condition = eval_existing_condition,
-                                    additional_condition = eval_additional_condition,
-                                    class_number=0,
-                                    strength=config.guidance_strength,
-                                    batch_size=total_samples,
-                                    max_time=4.0,
-                                    min_time=1/400,
-                                    time_dilation=1,
-                                    num_steps=50, 
-                                    eps=1e-5,
-                                    speed_balanced=True,
-                                    device=DEVICE
-                                )
+                with torch.no_grad():
+                    for class_num in range(10):
+                        for _ in range(2):
+                            samples = ddsm.Euler_Maruyama_sampler(
+                                                score_model,
+                                                (200, 4), 
+                                                existing_condition = conditions_10class[class_num],
+                                                additional_condition = torch.cat((
+                                                        torch.zeros(config.batch_size // 2, dtype=torch.long),
+                                                        torch.full((config.batch_size // 2,), 9, dtype=torch.long)
+                                                    )).to(DEVICE),
+                                                class_number=10,
+                                                strength=config.guidance_strength,
+                                                batch_size=config.batch_size,
+                                                max_time=4.0,
+                                                min_time=1/400,
+                                                time_dilation=1,
+                                                num_steps=100, 
+                                                eps=1e-5,
+                                                speed_balanced=True,
+                                                device=DEVICE,
+                                                augment=True
+                                            ).cpu().detach().numpy()
+                            allsamples_original_conditions_low[class_num].append(samples[:config.batch_size // 2, :, :])
+                            allsamples_original_conditions_high[class_num].append(samples[config.batch_size // 2 :, :, :])
+                    
+                # Concatenate samples for each class
+                allsamples_conditions_low = [np.concatenate(allsamples_original_conditions_low[i], axis=0) for i in range(10)]
+                allsamples_conditions_high = [np.concatenate(allsamples_original_conditions_high[i], axis=0) for i in range(10)]
                 
-                preds_onehot = (logits_pred > 0.5) * torch.ones_like(logits_pred)
-                preds_onehot = torch.permute(preds_onehot, (0, 2, 1)).to(DEVICE)
+                rewards_conditions_low = [calculate_rewards(allsamples_conditions_low[i]) for i in range(10)]
+                rewards_conditions_high = [calculate_rewards(allsamples_conditions_high[i]) for i in range(10)]
+
+                # Prepare data for comparison and plotting
+                compare_hepg2_low = np.concatenate([rewards_conditions_low[i][:, 0].reshape(-1) for i in range(10)], axis=0)
+                compare_hepg2_high = np.concatenate([rewards_conditions_high[i][:, 0].reshape(-1) for i in range(10)], axis=0)
+                compare_k562_low = np.concatenate([rewards_conditions_low[i][:, 1].reshape(-1) for i in range(10)], axis=0)
+                compare_k562_high = np.concatenate([rewards_conditions_high[i][:, 1].reshape(-1) for i in range(10)], axis=0)
                 
-                raw_reward_old_condition = reward_model(preds_onehot)[:,0].squeeze(1)
-                raw_reward_new_condition = reward_model(preds_onehot)[:,1].squeeze(1)
+                types = [f'{(i+1)*10}%' for i in range(10)]
+                
+                types_flat_hepg2_low = [t for i, t in enumerate(types) for _ in range(len(rewards_conditions_low[i][:, 0]))]
+                types_flat_hepg2_high = [t for i, t in enumerate(types) for _ in range(len(rewards_conditions_high[i][:, 0]))]
+                types_flat_k562_low = [t for i, t in enumerate(types) for _ in range(len(rewards_conditions_low[i][:, 1]))]
+                types_flat_k562_high = [t for i, t in enumerate(types) for _ in range(len(rewards_conditions_high[i][:, 1]))]
 
-            pearson_old, _ = pearsonr(raw_reward_old_condition.detach().cpu().numpy(), eval_existing_condition.cpu().numpy())
-            pearson_new, _ = pearsonr(raw_reward_new_condition.detach().cpu().numpy(), eval_additional_condition.cpu().numpy())
-            
-            print('Evaluation ------ HepG2 Pearson: %.3f | K562 Pearson: %.3f\n'%(pearson_old, pearson_new))
-            
-            eval_pearson_old.append(pearson_old)
-            eval_pearson_new.append(pearson_new)
+                # Data dictionaries for each subplot
+                data_dict_hepg2_low = {'Condition (HepG2 quantiles)': types_flat_hepg2_low, 'HepG2': compare_hepg2_low}
+                data_dict_hepg2_high = {'Condition (HepG2 quantiles)': types_flat_hepg2_high, 'HepG2': compare_hepg2_high}
+                data_dict_k562_low = {'Condition (HepG2 quantiles)': types_flat_k562_low, 'K562': compare_k562_low}
+                data_dict_k562_high = {'Condition (HepG2 quantiles)': types_flat_k562_high, 'K562': compare_k562_high}
 
-            wandb.log({
-                'Eval/HepG2_Pearson': pearson_old,
-                'Eval/K562_Pearson': pearson_new
-            })
-            
-            # Plotting and logging scatter plots
-            plt.figure(figsize=(12, 6))
-            plt.suptitle(f'Evaluation (Epoch: {k})', fontsize=28)
+                # Create DataFrames for each plot
+                plot_data_hepg2_low = pd.DataFrame(data_dict_hepg2_low)
+                plot_data_hepg2_high = pd.DataFrame(data_dict_hepg2_high)
+                plot_data_k562_low = pd.DataFrame(data_dict_k562_low)
+                plot_data_k562_high = pd.DataFrame(data_dict_k562_high)
 
-            # First subplot
-            ax1 = plt.subplot(1, 2, 1)
-            sns.scatterplot(
-                x=eval_existing_condition.detach().cpu().numpy(), 
-                y=raw_reward_old_condition.detach().cpu().numpy(), 
-                alpha=0.8,
-                label=f'Pearson = {pearson_old:.2f}'
-            )
-            ax1.set_xlabel('Condition', fontsize=22)
-            ax1.set_ylabel('Score', fontsize=22)
-            ax1.set_title('HepG2', fontsize=26)
-            ax1.grid(True, linestyle='--', linewidth=1)
-            ax1.tick_params(axis='both', which='major', labelsize=18)
-            ax1.legend(loc='upper left', fontsize=20)
+                # Create a 2x2 figure for subplots
+                fig, axs = plt.subplots(2, 2, figsize=(15, 12))
 
-            # Second subplot
-            ax2 = plt.subplot(1, 2, 2)
-            sns.scatterplot(
-                x=eval_additional_condition.detach().cpu().numpy(), 
-                y=raw_reward_new_condition.detach().cpu().numpy(), 
-                alpha=0.8,
-                label=f'Pearson = {pearson_new:.2f}'
-            )
-            ax2.set_xlabel('Condition', fontsize=22)
-            ax2.set_ylabel('Score', fontsize=22)
-            ax2.set_title('K562', fontsize=26)
-            ax2.grid(True, linestyle='--', linewidth=1)
-            ax2.tick_params(axis='both', which='major', labelsize=18)
-            ax2.legend(loc='upper left', fontsize=20)
-            
-            plt.tight_layout(pad=2.0)
-            # plt.style.use('dark_background')
+                sns.boxplot(data=plot_data_hepg2_low, 
+                            x='Condition (HepG2 quantiles)', 
+                            y='HepG2', 
+                            palette="Set2", 
+                            showfliers=False, ax=axs[0, 0])
+                axs[0, 0].set_title('New condition: low K562', fontsize=14)
+                axs[0, 0].set_xlabel('Condition (HepG2 quantiles)')
+                axs[0, 0].set_ylabel('HepG2')
 
-            # Save plot to a temporary file
-            plot_file = os.path.join(save_folder_eval, f'scatter_plot_epoch_{k}.png')
-            plt.savefig(plot_file)
-            plt.close()
+                sns.boxplot(data=plot_data_hepg2_high, 
+                            x='Condition (HepG2 quantiles)', 
+                            y='HepG2', 
+                            palette="Set2", 
+                            showfliers=False, ax=axs[0, 1])
+                axs[0, 1].set_title('New condition: high K562', fontsize=14)
+                axs[0, 1].set_xlabel('Condition (HepG2 quantiles)')
+                axs[0, 1].set_ylabel('HepG2')
 
-            # Log plot to wandb
-            wandb.log({"eval_vis": wandb.Image(plot_file)})
+                sns.boxplot(data=plot_data_k562_low, 
+                            x='Condition (HepG2 quantiles)', 
+                            y='K562', 
+                            palette="Set1", 
+                            showfliers=False, ax=axs[1, 0])
+                axs[1, 0].set_title('New condition: low K562', fontsize=14)
+                axs[1, 0].set_xlabel('Condition (HepG2 quantiles)')
+                axs[1, 0].set_ylabel('K562')
+
+                sns.boxplot(data=plot_data_k562_high, 
+                            x='Condition (HepG2 quantiles)', 
+                            y='K562', 
+                            palette="Set1", 
+                            showfliers=False, ax=axs[1, 1])
+                axs[1, 1].set_title('New condition: high K562', fontsize=14)
+                axs[1, 1].set_xlabel('Condition (HepG2 quantiles)')
+                axs[1, 1].set_ylabel('K562')
+                
+                plt.tight_layout()
+                # line = plt.Line2D([0.05, 0.95], [0.4, 0.4], color="blue", linewidth=3, transform=fig.transFigure)
+                # fig.add_artist(line)
+
+                # Save plot to a temporary file
+                plot_file = os.path.join(save_folder_eval, f'boxplot_epoch_{k}.png')
+                plt.savefig(plot_file)
+                plt.close()
+
+                # Log plot to wandb
+                wandb.log({"eval_vis": wandb.Image(plot_file)}, step=k)
+                
+                torch.save(score_model.state_dict(), save_folder + "/score-model_ckpt=%d.pth"%k)
 
 if __name__ == "__main__":
     torch.cuda.empty_cache()

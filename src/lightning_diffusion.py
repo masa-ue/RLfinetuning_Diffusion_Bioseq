@@ -114,14 +114,14 @@ if __name__ == '__main__':
             dirpath=save_folder,
             monitor='average-loss', 
             save_top_k=-1, 
-            filename="diffusion_{epoch:03d}-{average-loss:.2f}" 
+            filename="diffusion_{epoch:03d}-{average-loss:.3f}" 
         )
     
     early_stopping_callback = EarlyStopping(
             monitor='average-loss',  # Metric to monitor
             patience=10,             # Number of epochs to wait for improvement
             verbose=True,
-            mode='min'               # Mode can be 'min' or 'max'
+            mode='min',            # Mode can be 'min' or 'max'  
         )
     
     trainer = L.Trainer(accelerator="cuda", 

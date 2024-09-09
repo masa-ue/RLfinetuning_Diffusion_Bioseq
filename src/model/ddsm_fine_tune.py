@@ -34,6 +34,7 @@ def Euler_Maruyama_sampler_GPU_Conditional(
         speed_factor=None,
         concat_input=None,
         eps=1e-5,
+        continuous=True
 ):
     """
     Generate samples from score-based models with the Euler-Maruyama solver
@@ -161,7 +162,11 @@ def Euler_Maruyama_sampler_GPU_Conditional(
             with torch.enable_grad():
                 if concat_input is None:
                     # score = score_model(x, batch_time_step, condition, additional_condition, None) # x: [128, 50, 4]; batch_time_step: [128], condition: [128, 1]
-                    zero_class = torch.zeros(batch_size).type(torch.FloatTensor).to(device)
+                    if continuous:
+                        zero_class = torch.zeros(batch_size).type(torch.FloatTensor).to(device)
+                    else:
+                        zero_class = torch.zeros(batch_size).type(torch.LongTensor).to(device)
+                    
                     score = strength * score_model(x, batch_time_step, existing_condition, additional_condition) +\
                         (1.0 - strength) * score_model(x, batch_time_step, zero_class, zero_class) 
                 else:

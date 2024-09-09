@@ -1,12 +1,12 @@
 #!/bin/bash
 python ./src/lightning_diffusion.py \
      --save_folder ./save_models \
-     --class_number 3 \
+     --class_number 10 \
      --device 4 \
-     --num_epochs 400 \
-     --train_data tutorials/Human-enhancer/artifacts/DNA-dataset:v0/y_HepG2_3class.npz \
+     --num_epochs 600 \
+     --train_data tutorials/Human-enhancer/artifacts/DNA-dataset:v0/y_HepG2_10class.npz \
      --lr 3e-3 \
-     --run_name ATAC_Hepg2_3class_V0/
+     --run_name MRPA/Hepg2_10class_V1/
      # --continuous \
 
 
