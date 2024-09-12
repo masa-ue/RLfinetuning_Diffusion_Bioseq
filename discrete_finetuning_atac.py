@@ -27,19 +27,19 @@ from tqdm import tqdm
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint_path', type=str,
-                        default='save_models/MRPA/Hepg2_10class_V2/_2024.09.06_23.49.48/diffusion_epoch=347-average-loss=0.288.ckpt')
-
+                        default='save_models/ATAC/Hepg2_10class_V1/_2024.09.11_03.01.28/diffusion_epoch=479-average-loss=0.285.ckpt')
+    
     parser.add_argument('--device', type=str, default='cuda:3')
-    parser.add_argument("--guidance_strength", type=float, default=20.0)
-    parser.add_argument("--additional_embed_lr", type=float, default=1e-1)
-    parser.add_argument("--lr", type=float, default=3e-4)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
+    parser.add_argument("--guidance_strength", type=float, default=1.0)
+    parser.add_argument("--additional_embed_lr", type=float, default=1e-2)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=4)
     parser.add_argument("--validation_epoch", type=int, default=4)
     parser.add_argument("--num_epoch", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--KL_weight", type=float, default=0.0)
     
-    parser.add_argument('--save_folder', type=str, default='logs/RL-condition_discrete_new')
+    parser.add_argument('--save_folder', type=str, default='logs/RL-condition_discrete_ATAC')
     
     return parser.parse_args()
 
@@ -58,7 +58,7 @@ def main():
         os.makedirs(save_folder)
         os.makedirs(save_folder_eval)
     
-    wandb.init(entity='sarosavo', project="Finetune-DNA-new", \
+    wandb.init(entity='sarosavo', project="Finetune-DNA-new-ATAC", \
                name=run_name, config=args)
     
     config = wandb.config
@@ -69,13 +69,13 @@ def main():
     DEVICE = config.device
     
     reward_model = LightningModel.load_from_checkpoint(
-        "tutorials/Human-enhancer/experiment/lightning_logs/l9s47rcz/checkpoints/epoch=4-step=4610.ckpt"
+        'tutorials/Human-enhancer/experiment/lightning_logs/4l86okh7/checkpoints/epoch=3-step=1844.ckpt'
     )
     reward_model.eval()
     reward_model.requires_grad_(False)
     reward_model.to(DEVICE)
     
-    eval_model = LightningModel.load_from_checkpoint("tutorials/Human-enhancer/artifacts/DNA-model:v0/reward_model.ckpt")
+    eval_model = LightningModel.load_from_checkpoint("tutorials/Human-enhancer/artifacts/binary_atac_reward_model.ckpt")
     eval_model.eval()
     eval_model.requires_grad_(False)
     eval_model.to(DEVICE)
@@ -276,29 +276,29 @@ def main():
                 rewards_conditions_high = [calculate_rewards(allsamples_conditions_high[i]) for i in range(10)]
 
                 # Prepare data for comparison and plotting
-                compare_hepg2_low = np.concatenate([rewards_conditions_low[i][:, 0].reshape(-1) for i in range(10)], axis=0)
-                compare_hepg2_high = np.concatenate([rewards_conditions_high[i][:, 0].reshape(-1) for i in range(10)], axis=0)
-                compare_k562_low = np.concatenate([rewards_conditions_low[i][:, 1].reshape(-1) for i in range(10)], axis=0)
-                compare_k562_high = np.concatenate([rewards_conditions_high[i][:, 1].reshape(-1) for i in range(10)], axis=0)
+                compare_hepg2_low = np.concatenate([rewards_conditions_low[i][:, 1].reshape(-1) for i in range(10)], axis=0)
+                compare_hepg2_high = np.concatenate([rewards_conditions_high[i][:, 1].reshape(-1) for i in range(10)], axis=0)
+                compare_sknsh_low = np.concatenate([rewards_conditions_low[i][:, 5].reshape(-1) for i in range(10)], axis=0)
+                compare_sknsh_high = np.concatenate([rewards_conditions_high[i][:, 5].reshape(-1) for i in range(10)], axis=0)
                 
                 types = [f'{(i+1)*10}%' for i in range(10)]
                 
                 types_flat_hepg2_low = [t for i, t in enumerate(types) for _ in range(len(rewards_conditions_low[i][:, 0]))]
                 types_flat_hepg2_high = [t for i, t in enumerate(types) for _ in range(len(rewards_conditions_high[i][:, 0]))]
-                types_flat_k562_low = [t for i, t in enumerate(types) for _ in range(len(rewards_conditions_low[i][:, 1]))]
-                types_flat_k562_high = [t for i, t in enumerate(types) for _ in range(len(rewards_conditions_high[i][:, 1]))]
+                types_flat_sknsh_low = [t for i, t in enumerate(types) for _ in range(len(rewards_conditions_low[i][:, 1]))]
+                types_flat_sknsh_high = [t for i, t in enumerate(types) for _ in range(len(rewards_conditions_high[i][:, 1]))]
 
                 # Data dictionaries for each subplot
                 data_dict_hepg2_low = {'Condition (HepG2 quantiles)': types_flat_hepg2_low, 'HepG2': compare_hepg2_low}
                 data_dict_hepg2_high = {'Condition (HepG2 quantiles)': types_flat_hepg2_high, 'HepG2': compare_hepg2_high}
-                data_dict_k562_low = {'Condition (HepG2 quantiles)': types_flat_k562_low, 'K562': compare_k562_low}
-                data_dict_k562_high = {'Condition (HepG2 quantiles)': types_flat_k562_high, 'K562': compare_k562_high}
+                data_dict_sknsh_low = {'Condition (HepG2 quantiles)': types_flat_sknsh_low, 'SKNSH': compare_sknsh_low}
+                data_dict_sknsh_high = {'Condition (HepG2 quantiles)': types_flat_sknsh_high, 'SKNSH': compare_sknsh_high}
 
                 # Create DataFrames for each plot
                 plot_data_hepg2_low = pd.DataFrame(data_dict_hepg2_low)
                 plot_data_hepg2_high = pd.DataFrame(data_dict_hepg2_high)
-                plot_data_k562_low = pd.DataFrame(data_dict_k562_low)
-                plot_data_k562_high = pd.DataFrame(data_dict_k562_high)
+                plot_data_sknsh_low = pd.DataFrame(data_dict_sknsh_low)
+                plot_data_sknsh_high = pd.DataFrame(data_dict_sknsh_high)
 
                 # Create a 2x2 figure for subplots
                 fig, axs = plt.subplots(2, 2, figsize=(15, 12))
@@ -308,7 +308,7 @@ def main():
                             y='HepG2', 
                             palette="Set2", 
                             showfliers=False, ax=axs[0, 0])
-                axs[0, 0].set_title('New condition: low K562', fontsize=14)
+                axs[0, 0].set_title('New condition: low SKNSH', fontsize=14)
                 axs[0, 0].set_xlabel('Condition (HepG2 quantiles)')
                 axs[0, 0].set_ylabel('HepG2')
 
@@ -317,31 +317,29 @@ def main():
                             y='HepG2', 
                             palette="Set2", 
                             showfliers=False, ax=axs[0, 1])
-                axs[0, 1].set_title('New condition: high K562', fontsize=14)
+                axs[0, 1].set_title('New condition: high SKNSH', fontsize=14)
                 axs[0, 1].set_xlabel('Condition (HepG2 quantiles)')
                 axs[0, 1].set_ylabel('HepG2')
 
-                sns.boxplot(data=plot_data_k562_low, 
+                sns.boxplot(data=plot_data_sknsh_low, 
                             x='Condition (HepG2 quantiles)', 
-                            y='K562', 
+                            y='SKNSH', 
                             palette="Set1", 
                             showfliers=False, ax=axs[1, 0])
-                axs[1, 0].set_title('New condition: low K562', fontsize=14)
+                axs[1, 0].set_title('New condition: low SKNSH', fontsize=14)
                 axs[1, 0].set_xlabel('Condition (HepG2 quantiles)')
-                axs[1, 0].set_ylabel('K562')
+                axs[1, 0].set_ylabel('SKNSH')
 
-                sns.boxplot(data=plot_data_k562_high, 
+                sns.boxplot(data=plot_data_sknsh_high, 
                             x='Condition (HepG2 quantiles)', 
-                            y='K562', 
+                            y='SKNSH', 
                             palette="Set1", 
                             showfliers=False, ax=axs[1, 1])
-                axs[1, 1].set_title('New condition: high K562', fontsize=14)
+                axs[1, 1].set_title('New condition: high SKNSH', fontsize=14)
                 axs[1, 1].set_xlabel('Condition (HepG2 quantiles)')
-                axs[1, 1].set_ylabel('K562')
+                axs[1, 1].set_ylabel('SKNSH')
                 
                 plt.tight_layout()
-                # line = plt.Line2D([0.05, 0.95], [0.4, 0.4], color="blue", linewidth=3, transform=fig.transFigure)
-                # fig.add_artist(line)
 
                 # Save plot to a temporary file
                 plot_file = os.path.join(save_folder_eval, f'boxplot_epoch_{k}.png')

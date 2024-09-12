@@ -4,9 +4,9 @@ python ./src/lightning_diffusion.py \
      --class_number 10 \
      --device 4 \
      --num_epochs 600 \
-     --train_data tutorials/Human-enhancer/artifacts/DNA-dataset:v0/y_HepG2_10class.npz \
+     --train_data tutorials/Human-enhancer/artifacts/DNA-dataset:v0/y_HepG2_10class_atac.npz \
      --lr 3e-3 \
-     --run_name MRPA/Hepg2_10class_V1/
+     --run_name ATAC/Hepg2_10class_V1/
      # --continuous \
 
 
