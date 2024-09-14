@@ -135,3 +135,142 @@ class LightningDiffusion(L.LightningModule):
     def configure_optimizers(self):
         return Adam(self.model.parameters(), lr= self.lr)
 
+class LightningDiffusion_augment(L.LightningModule):
+    def __init__(self, 
+                 weight_file, 
+                 time_schedule, 
+                 speed_balanced=True, 
+                 all_class_number=0, 
+                 augment=False, 
+                 ncat=4, 
+                 n_time_steps=400, 
+                 lr=1e-4,
+                 continuous=False,
+                 y_low=0,
+                 y_high=10,
+                 additional_embed_lr=1e-1,
+            ):
+
+        super().__init__() 
+
+        v_one, v_zero, v_one_loggrad, v_zero_loggrad, timepoints = torch.load(weight_file)
+
+        # Change to CPU  
+        self.v_one = v_one.cpu()
+        self.v_zero = v_zero.cpu()
+        self.time_schedule = time_schedule
+        self.v_one_loggrad = v_one_loggrad.cpu()
+        self.v_zero_loggrad = v_zero_loggrad.cpu()
+        self.timepoints = timepoints.cpu()
+        
+        self.continuous = continuous
+        
+        time_dependent_weights = torch.tensor(np.load(time_schedule)['x'])
+        
+        if self.continuous:
+            self.model = modeld.AugmentedScoreNet_Continuous(
+                time_dependent_weights=torch.sqrt(time_dependent_weights),
+                y_low=y_low, 
+                y_high=y_high,
+                augment = augment
+            )
+        
+        elif all_class_number != 1:
+            # self.model = modeld.ScoreNet_Conditional(time_dependent_weights=torch.sqrt(time_dependent_weights), all_class_number=all_class_number)
+            
+            self.model = modeld.AugmentedScoreNet_Conditional(
+                time_dependent_weights=torch.sqrt(time_dependent_weights), 
+                all_class_number=all_class_number,
+                augment = augment
+            )
+            
+        else:
+            self.model = modeld.ScoreNet(time_dependent_weights=torch.sqrt(time_dependent_weights)) 
+        
+        self.avg_loss = 0  
+        self.num_items = 0
+        self.all_class_number = all_class_number
+        self.speed_balanced = speed_balanced
+        self.ncat = ncat
+        self.n_time_steps = n_time_steps
+        
+        self.lr = lr
+        self.additional_embed_lr = additional_embed_lr
+
+    def forward(self, x, t, y1, y2):
+        return self.model(x, t, class_number = y1, add_class_number = y2)
+    
+    def train_epoch_start(self):
+        self.num_items = 0
+        self.avg_loss = 0 
+
+    def training_step(self, batch):
+        xS, yS1, yS2 = batch
+        x = xS[:, :, :4]
+        time_dependent_weights = torch.tensor(np.load(self.time_schedule)['x']).to(self.device)
+ 
+        # Optional : there are several options for importance sampling here. it needs to match the loss function
+        random_t = torch.LongTensor(np.random.choice(np.arange(self.n_time_steps), size=x.shape[0],
+                                                     p=(torch.sqrt(time_dependent_weights) / torch.sqrt(
+                                                         time_dependent_weights).sum()).cpu().detach().numpy()))
+       
+        perturbed_x, perturbed_x_grad = ddsm.diffusion_fast_flatdirichlet(x.cpu(), random_t, self.v_one, self.v_one_loggrad)
+  
+        perturbed_x = perturbed_x.to(self.device)
+        perturbed_x_grad = perturbed_x_grad.to(self.device)
+        random_timepoints = self.timepoints[random_t].to(self.device)
+        
+        if self.continuous:
+            yS1 = yS1.type(torch.FloatTensor)
+            yS2 = yS2.type(torch.FloatTensor)
+        else:
+            yS1 = yS1.type(torch.LongTensor)
+            yS2 = yS2.type(torch.LongTensor)
+            # random_list1 = np.random.binomial(1, 0.3, yS1.shape[0])
+            # yS1[random_list1==1] = self.all_class_number
+            
+            random_list2 = np.random.binomial(1, 0.3, yS2.shape[0])
+            yS2[random_list2==1] = self.all_class_number
+            
+        yS1 = yS1.to(self.device)
+        yS2 = yS2.to(self.device)
+        
+        score = self.forward(perturbed_x, random_timepoints, yS1, yS2)
+
+        # the loss weighting function may change, there are a few options that we will experiment on
+        if self.speed_balanced:
+            s = 2 / (torch.ones(self.ncat - 1, device= self.device) + torch.arange(self.ncat - 1, 0, -1,
+                                                                                      device=self.device).float())
+        else:
+            s = torch.ones(self.ncat - 1, device= self.device)
+
+        
+        perturbed_v = sb._inverse(perturbed_x, prevent_nan=True).detach()
+        
+        loss = torch.mean(torch.mean(
+            1 / (torch.sqrt(time_dependent_weights))[random_t][(...,) + (None,) * (x.ndim - 1)] * s[
+                (None,) * (x.ndim - 1)] * perturbed_v * (1 - perturbed_v) * (
+                        ddsm.gx_to_gv(score, perturbed_x, create_graph=True) - ddsm.gx_to_gv(perturbed_x_grad,
+                                                                                    perturbed_x)) ** 2, dim=(1)))
+        self.avg_loss += loss.item() * x.shape[0]
+        self.num_items += x.shape[0]
+
+        self.log("loss", loss)
+        wandb.log({"loss": loss})
+        return loss
+    
+    def on_train_batch_end(self, outputs, *args):
+        self.log("average-loss", self.avg_loss / self.num_items)
+
+        wandb.log({"Epoch average loss": self.avg_loss / self.num_items})
+        wandb.log({"Epoch": self.current_epoch})
+            
+        return {"Epoch average loss": self.avg_loss / self.num_items} 
+
+    def configure_optimizers(self):
+        # return Adam(self.model.parameters(), lr= self.lr)
+        return Adam([
+            {'params': self.model.additional_embed_class.parameters(), 'lr': self.additional_embed_lr},  # Custom learning rate for additional_embed_class
+            {'params': [param for name, param in self.model.named_parameters() 
+                    if "additional_embed_class" not in name], 'lr': self.lr},
+        ])

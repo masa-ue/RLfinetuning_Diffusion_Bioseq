@@ -39,7 +39,7 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--KL_weight", type=float, default=0.0)
     
-    parser.add_argument('--save_folder', type=str, default='logs/RL-condition_discrete_new')
+    parser.add_argument('--save_folder', type=str, default='logs/RL-condition_discrete_MRPA')
     
     return parser.parse_args()
 

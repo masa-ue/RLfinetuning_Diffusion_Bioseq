@@ -165,14 +165,14 @@ def main():
         score_model.train()
         torch.set_grad_enabled(True)
         
-        # existing_condition = torch.randint(0,10,(config.batch_size,)).to(DEVICE)  ## Random condition
+        # existing_condition = torch.randint(0,10,(config.batch_size,)).to(DEVICE)  ## Dont use: often complicates training
         existing_condition = torch.randint(0, 2, (config.batch_size,)).to(DEVICE)*9
         
         additional_condition = torch.cat((
             torch.zeros(config.batch_size // 2, dtype=torch.long),
             torch.full((config.batch_size // 2,), 9, dtype=torch.long)
         )).to(DEVICE)
-        # additional_condition = torch.full((config.batch_size,), 0, dtype=torch.long).to(DEVICE)
+        # additional_condition = torch.randint(0, 10, (config.batch_size,)).to(DEVICE)  ## Dont use: inaccurate intermediate likelihoods
         
         
         # Training 
@@ -197,7 +197,9 @@ def main():
         
         probabilities = new_reward_model(logits_pred).squeeze(-1)  # (batch, 200, 4) -> (batch, 10)
         
+        #############################################################
         # choose between two groups of classes or just two classes
+        
         # selected_probs = probabilities[torch.arange(probabilities.size(0)), additional_condition]
         
         selected_probs = torch.zeros(probabilities.size(0)).to(DEVICE)
@@ -208,6 +210,7 @@ def main():
                 selected_probs[i] = probabilities[i, group_1].sum()  # Sum for classes 0 to 4
             else:
                 selected_probs[i] = probabilities[i, group_2].sum()  # Sum for classes 5 to 9
+        #############################################################
         
         reward = torch.log(selected_probs)
         
