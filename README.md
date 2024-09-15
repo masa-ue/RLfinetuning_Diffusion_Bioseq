@@ -11,15 +11,21 @@ conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvi
 pip install tqdm pandas matplotlib lightning
 ```
 
-## Checkpoints
+## Checkpoints and files
 
-Please download the following 3 checkpoints and put them in the corresponding folders from [https://drive.google.com/drive/folders/1n9Hknzg45vtzstIqZsVRuWV2-D8V61Zn?usp=sharing](https://drive.google.com/drive/folders/1n9Hknzg45vtzstIqZsVRuWV2-D8V61Zn?usp=sharing).
+Please download the following checkpoints and files and put them in the corresponding folders from [https://drive.google.com/drive/folders/1n9Hknzg45vtzstIqZsVRuWV2-D8V61Zn?usp=sharing](https://drive.google.com/drive/folders/1n9Hknzg45vtzstIqZsVRuWV2-D8V61Zn?usp=sharing).
 
 1. `save_models/ATAC/Hepg2_10class_V1/_2024.09.11_03.01.28/diffusion_epoch=479-average-loss=0.285.ckpt`
 
 2. `tutorials/Human-enhancer/artifacts/binary_atac_reward_model.ckpt`
 
 3. `tutorials/Human-enhancer/experiment/lightning_logs/4l86okh7/checkpoints/epoch=3-step=1844.ckpt`
+
+4. `tutorials/Human-enhancer/artifacts/DNA-dataset:v0/dataset.csv.gz`
+
+5. `tutorials/Human-enhancer/artifacts/DNA-dataset:v0/steps400.cat4.speed_balance.time4.0.samples100000.pth`
+
+6. `tutorials/Human-enhancer/artifacts/DNA-dataset:v0/time_dependent.npz`
 
 ## What is included?
 
