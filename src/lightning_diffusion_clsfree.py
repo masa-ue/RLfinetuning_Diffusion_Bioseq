@@ -51,6 +51,8 @@ if __name__ == '__main__':
     parser.add_argument("--train_data_sknsh", type=str, default='tutorials/Human-enhancer/artifacts/DNA-dataset:v0/y_SKNSH_10class_atac_clsfree.npz')
     parser.add_argument("--device", type=list_of_ints, default=[1])
     parser.add_argument("--num_epochs", type=int, default=10)
+    parser.add_argument("--batch_size", type=int, default=256)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=4)
     parser.add_argument("--run_name", type=str, default="test" )
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--additional_embed_lr", type=float, default=1e-2)
@@ -71,7 +73,8 @@ if __name__ == '__main__':
         diffusion_weights_file = 'tutorials/Human-enhancer/artifacts/DNA-dataset:v0/steps400.cat4.speed_balance.time4.0.samples100000.pth'  
         time_schedule = 'tutorials/Human-enhancer/artifacts/DNA-dataset:v0/time_dependent.npz'
         device = cuda_target
-        batch_size = 256
+        batch_size = args.batch_size
+        gradient_accumulation_steps = args.gradient_accumulation_steps
         num_workers = 4
         n_time_steps = 400
         random_order = False
@@ -134,6 +137,7 @@ if __name__ == '__main__':
     trainer = L.Trainer(accelerator="cuda", 
                         devices=cuda_target, 
                         callbacks=[checkpoint_callback, early_stopping_callback], 
-                        max_epochs = max_epochs 
+                        max_epochs = max_epochs,
+                        accumulate_grad_batches=config.gradient_accumulation_steps 
                     )
     trainer.fit(model, data_loader)
