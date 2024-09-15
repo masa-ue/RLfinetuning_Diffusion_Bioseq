@@ -21,11 +21,13 @@ media/
 
 backup/
 
-# save_models/*
-save_models/cls-free
-
+save_models/
+# save_models/cls-free
 # !save_models/ATAC/Hepg2_10class_V1/_2024.09.11_03.01.28/diffusion_epoch=479-average-loss=0.285.ckpt
 
-!tutorials/Human-enhancer/experiment/lightning_logs/4l86okh7/
+# !tutorials/Human-enhancer/experiment/lightning_logs/4l86okh7/
 tutorials/*/artifacts/*
-!tutorials/Human-enhancer/artifacts/binary_atac_reward_model.ckpt
+tutorials/*/experiment/*
+# !tutorials/Human-enhancer/artifacts/binary_atac_reward_model.ckpt
+
+prepare-data.py

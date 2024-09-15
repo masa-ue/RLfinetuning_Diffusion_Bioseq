@@ -11,9 +11,19 @@ conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvi
 pip install tqdm pandas matplotlib lightning
 ```
 
+## Checkpoints
+
+Please download the following 3 checkpoints and put them in the corresponding folders from [https://drive.google.com/drive/folders/1n9Hknzg45vtzstIqZsVRuWV2-D8V61Zn?usp=sharing](https://drive.google.com/drive/folders/1n9Hknzg45vtzstIqZsVRuWV2-D8V61Zn?usp=sharing).
+
+1. `save_models/ATAC/Hepg2_10class_V1/_2024.09.11_03.01.28/diffusion_epoch=479-average-loss=0.285.ckpt`
+
+2. `tutorials/Human-enhancer/artifacts/binary_atac_reward_model.ckpt`
+
+3. `tutorials/Human-enhancer/experiment/lightning_logs/4l86okh7/checkpoints/epoch=3-step=1844.ckpt`
+
 ## What is included?
 
-Our goal: to condition generations on a new condition ($y$), given a pre-trained diffusion model on an exisiting condition (i.e. $p(x|c)$) and a classifier of the new condition ($x \mapsto y$). 
+Our goal: to condition generations on a new condition ($y$), given a pre-trained diffusion model on an exisiting condition (i.e. $p(x|c)$) and a classifier of the new condition ($x \mapsto y$).  
 The ultimate goal is to sample from $p(x|c,y)$. We are in a fine-tuning setting, where we have limited data labeled with the new condition.
 
 ### 1. Pre-trained conditional diffusion model on HepG2
